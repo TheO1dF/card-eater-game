@@ -1,0 +1,247 @@
+/* --- 全新响应式样式表 (Mobile-First) --- */
+:root {
+  color-scheme: dark;
+  --bg-1: #0f172a;
+  --bg-2: #111827;
+  --panel: rgba(15, 23, 42, 0.72);
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+  --accent-eat: #22c55e;
+  --accent-discard: #f97316;
+  --color-gold: #fbb24a;
+}
+
+* { box-sizing: border-box; }
+html { font-size: 16px; }
+body {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh; /* 【核心】使用动态视口，完美避开手机浏览器上下地址栏 */
+  margin: 0;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.18), transparent 32%),
+    radial-gradient(circle at bottom, rgba(168, 85, 247, 0.16), transparent 30%),
+    linear-gradient(180deg, var(--bg-1), var(--bg-2));
+  overflow: hidden; 
+  overscroll-behavior: none; /* 【核心】彻底禁止手机端下拉刷新，保护向下滑动手感！ */
+  -webkit-tap-highlight-color: transparent; 
+}
+.app { width: 100%; height: 100%; display: grid; place-items: center; }
+
+/* 桌面端：居中容器，像一个桌台 */
+.table {
+  position: relative;
+  width: min(92vw, 1200px);
+  height: min(90vh, 820px);
+  border: 1px solid var(--panel-border);
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(14px);
+  overflow: hidden;
+}
+
+/* 顶部信息栏 (桌面端) */
+.hud {
+  position: absolute;
+  inset: 20px 20px auto 20px;
+  display: flex;
+  justify-content: space-around; /* 均匀分布 */
+  gap: 12px;
+  pointer-events: none;
+  z-index: 3;
+}
+.hud-panel {
+  flex: 1; /* 平分空间 */
+  min-width: 160px;
+  max-width: 220px;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  text-align: center;
+}
+.hud-label { font-size: 0.75rem; color: var(--muted); margin-bottom: 6px; }
+.hud-value { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.2px; }
+
+/* 卡牌区域 (桌面端) */
+.scene { position: absolute; inset: 0; display: grid; place-items: center; }
+.deck-stage { position: relative; width: 340px; height: 470px; display: grid; place-items: center; }
+.stack-shadow { position: absolute; width: 300px; height: 420px; border-radius: 28px; background: rgba(0, 0, 0, 0.22); filter: blur(24px); transform: translateY(28px) scale(0.94); }
+.card-stack { position: relative; width: 300px; height: 420px; }
+.card {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 22px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06)), rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+  user-select: none; touch-action: none; transform-origin: center center;
+  will-change: transform, opacity;
+}
+.card:nth-child(1) { transform: translateY(0px) scale(1); }
+.card:nth-child(2) { transform: translateY(10px) scale(0.98); }
+.card:nth-child(3) { transform: translateY(20px) scale(0.96); }
+.card-ambient { position: absolute; inset: 0; border-radius: 28px; background: radial-gradient(circle at top left, rgba(255,255,255,0.16), transparent 42%); pointer-events: none; }
+.card-topline { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.card-badge { display: inline-flex; align-items: center; justify-content: center; padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,0.08); color: #fff; font-size: 0.75rem; letter-spacing: 0.04em; }
+.card-name { font-size: 2.5rem; line-height: 1; font-weight: 800; margin-top: 8px; }
+.card-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 0.85rem; color: rgba(229, 231, 235, 0.76); }
+.card-stamp { align-self: flex-end; padding: 10px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); font-size: 0.8rem; color: rgba(255,255,255,0.86); }
+.card.is-active { z-index: 10; cursor: grab; }
+.card.is-active:active { cursor: grabbing; }
+
+/* 反馈提示 & 底部文字 */
+.card-feedback { position: absolute; inset: auto 0 28px 0; display: flex; justify-content: center; gap: 16px; pointer-events: none; z-index: 4; }
+.feedback-pill { min-width: 110px; text-align: center; padding: 12px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.12); background: rgba(15, 23, 42, 0.58); color: rgba(255,255,255,0.78); opacity: 0; transform: translateY(8px) scale(0.96); transition: opacity 140ms ease, transform 140ms ease; }
+.feedback-pill.show { opacity: 1; transform: translateY(0) scale(1); }
+.feedback-pill.eat { color: var(--accent-eat); }
+.feedback-pill.discard { color: var(--accent-discard); }
+.hint { position: absolute; inset: auto 0 18px 0; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* 弹窗样式 */
+.overlay { position: absolute; inset: 0; display: none; place-items: center; background: rgba(2, 6, 23, 0.58); backdrop-filter: blur(12px); z-index: 20; }
+.overlay.show { display: grid; }
+.overlay-panel { width: min(92vw, 860px); max-height: 86vh; overflow: auto; padding: 24px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.12); background: rgba(15, 23, 42, 0.94); box-shadow: 0 30px 80px rgba(0,0,0,0.4); }
+.overlay-title { font-size: 1.5rem; font-weight: 800; margin: 0 0 8px; }
+.overlay-tip { color: var(--muted); margin-bottom: 18px; font-size: 0.9rem; line-height: 1.5; }
+.hud-inline { position: static; inset: auto; margin-bottom: 14px; } /* 商店里的 HUD */
+.option-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+.rule-draft-card, .shop-card { text-align: left; border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; background: rgba(255,255,255,0.05); color: var(--text); padding: 16px; cursor: pointer; }
+.rule-draft-name, .shop-card-name { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
+.rule-draft-desc, .shop-card-meta, .shop-card-type, .shop-card-price { color: var(--muted); font-size: 0.8rem; margin-top: 6px; }
+.shop-actions { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+.shop-action { padding: 12px 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.08); color: var(--text); }
+
+
+/* --- 动画特效区 (保持不变) --- */
+.floater { position: absolute; z-index: 100; font-family: "Poetsen One", "Microsoft YaHei", sans-serif; font-weight: 900; font-size: 32px; pointer-events: none; text-shadow: 0 4px 15px rgba(0,0,0,0.6), 0 0 10px currentColor; animation: floatUp 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards; left: 50%; top: 40%; transform: translate(-50%, -50%) scale(var(--target-scale, 1)); }
+@keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); } 20% { opacity: 1; transform: translate(-50%, -80%) scale(var(--target-scale, 1)); } 100% { opacity: 0; transform: translate(-50%, -180%) scale(calc(var(--target-scale, 1) * 0.8)); } }
+.shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+@keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-8px, 0, 0); } 40%, 60% { transform: translate3d(8px, 0, 0); } }
+
+/* ========================================================= */
+/* --- 手机端原生级适配 (完美利用空间，保护滑动手感) --- */
+/* ========================================================= */
+@media (max-width: 768px) {
+  .app { padding: 0; }
+  
+  .table {
+    width: 100vw;
+    height: 100dvh; /* 动态视口高度 */
+    border: none;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 顶部 HUD：极简两行 Grid 布局，留出刘海屏空间 */
+  .hud {
+    position: relative;
+    inset: auto;
+    /* 自动适配苹果/安卓的刘海和状态栏，不浪费额外空间 */
+    padding: max(env(safe-area-inset-top), 12px) 12px 10px 12px; 
+    display: grid;
+    grid-template-columns: repeat(6, 1fr); /* 划分为6等份的网格 */
+    gap: 8px;
+    z-index: 10;
+    background: rgba(15, 23, 42, 0.5); /* 微微透出背景 */
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .hud-panel {
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: 12px;
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* 第1行：轮次 (左边占3格) | 分数 (右边占3格) */
+  .hud-panel:nth-child(1) { grid-column: span 3; align-items: flex-start; text-align: left; }
+  .hud-panel:nth-child(4) { grid-column: span 3; align-items: flex-end; text-align: right; }
+  
+  /* 第2行：耗时 (占2格) | 剩余牌 (占2格) | 金币 (占2格) */
+  .hud-panel:nth-child(2) { grid-column: span 2; }
+  .hud-panel:nth-child(3) { grid-column: span 2; }
+  .hud-panel:nth-child(5) { grid-column: span 2; }
+
+  /* 压缩字体和间距 */
+  .hud-panel:nth-child(1) .hud-label { margin-bottom: 2px; }
+  .hud-label { font-size: 0.7rem; margin-bottom: 2px; }
+  .hud-value { font-size: 1rem; }
+
+  /* 场景区域：拿走所有的剩余空间，卡牌完美居中 */
+  .scene {
+    position: relative;
+    inset: auto;
+    flex: 1; 
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* 底部避开 iPhone 细条 (Home Indicator) */
+    padding-bottom: max(env(safe-area-inset-bottom), 16px);
+  }
+
+  /* 卡牌舞台尺寸动态适配屏幕宽度，不再写死 */
+  .deck-stage {
+    width: min(72vw, 300px); 
+    height: calc(min(72vw, 300px) * 1.4); /* 严格保持卡牌 1:1.4 的比例 */
+    transform: none; /* 去掉之前的缩放缩放，解决模糊和位移问题 */
+  }
+  
+  .stack-shadow, .card-stack, .card {
+    width: 100%;
+    height: 100%;
+  }
+  
+/* 卡牌内部排版适配 */
+.card-name { font-size: 2.2rem; margin-top: 10px; text-align: center; }
+.card-meta { 
+  font-size: 0.9rem; 
+  margin-top: 15px; 
+  margin-bottom: auto; /* 将底部的效果描述推到最下方 */
+  display: flex; 
+  justify-content: space-between; 
+}
+
+/* 让卡牌底部的效果框居中、更亮、更好看 */
+.card-stamp { 
+  font-size: 0.8rem; 
+  padding: 10px 12px; 
+  width: 100%; 
+  text-align: center; 
+  align-self: center;
+  background: rgba(0, 0, 0, 0.4); /* 加深底色突出文字 */
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 16px;
+}
+
+/* 底部提示文字位置下移，避开卡牌本身 */
+.card-feedback { bottom: -45px; width: 100%; }
+/* 在手机端隐藏那句静态的“拖拽卡牌”废话，保持画面干净 */
+.hint { display: none; }
+
+  /* 底部提示文字位置下移，避开卡牌本身 */
+  .card-feedback { bottom: -35px; }
+  .hint { bottom: -55px; font-size: 0.75rem; }
+
+  /* 弹窗完美覆盖且适配刘海 */
+  .overlay { position: fixed; }
+  .overlay-panel {
+    width: 92vw;
+    max-height: 85dvh;
+    padding: 20px;
+    margin-top: env(safe-area-inset-top);
+  }
+}
