@@ -66,6 +66,23 @@ async function clickElement(selector) {
   await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
 }
 
+async function swipeElement(selector, direction) {
+  const rect = await evaluate(`(() => {
+    const bounds = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect();
+    return bounds ? { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2, height: bounds.height } : null;
+  })()`);
+  if (!rect) throw new Error(`Element not found: ${selector}`);
+  const distance = Math.max(110, rect.height * 0.34);
+  const endY = rect.y + (direction === "eat" ? distance : -distance);
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", x: rect.x, y: rect.y, button: "left", buttons: 1, clickCount: 1 });
+  await wait(24);
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: rect.x, y: (rect.y + endY) / 2, button: "left", buttons: 1 });
+  await wait(24);
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: rect.x, y: endY, button: "left", buttons: 1 });
+  await wait(24);
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: rect.x, y: endY, button: "left", buttons: 0, clickCount: 1 });
+}
+
 async function capture(name) {
   const result = await send("Page.captureScreenshot", { format: "png", fromSurface: true, captureBeyondViewport: false });
   await writeFile(resolve(outputDir, `${name}.png`), Buffer.from(result.data, "base64"));
@@ -91,6 +108,11 @@ for (const viewport of [
   });
   await send("Page.navigate", { url: `${gameUrl}?smoke=${viewport.name}-${Date.now()}` });
   await waitFor('document.readyState === "complete" && typeof document.querySelector("#startGameButton")?.onclick === "function"');
+  if (viewport.mobile) {
+    // Reproduce iOS/weak-network behavior where decode() can remain pending.
+    // Entering the shop and round two must never wait for decorative art.
+    await evaluate('HTMLImageElement.prototype.decode = () => new Promise(() => {})');
+  }
   await capture(`${viewport.name}-welcome`);
   await clickElement("#startGameButton");
   await waitFor('document.querySelectorAll(".rule-card").length > 0');
@@ -115,7 +137,8 @@ for (const viewport of [
       return card ? { summary: false, edible: card.classList.contains("card-edible") } : null;
     })()`);
     if (!screen || screen.summary) break;
-    await clickElement(screen.edible ? "#eatButton" : "#discardButton");
+    if (viewport.mobile) await swipeElement(".game-card.is-active", screen.edible ? "eat" : "discard");
+    else await clickElement(screen.edible ? "#eatButton" : "#discardButton");
     actions += 1;
     await wait(230);
   }
@@ -137,7 +160,38 @@ for (const viewport of [
     offer_count: document.querySelectorAll(".shop-card").length,
     loaded_sprite_sheets: [...document.querySelectorAll(".shop-card-icon")].map((node) => getComputedStyle(node).backgroundImage)
   })`);
-  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, ...state, actions, ...roundComplete, ...shopState });
+  const secondRound = { second_round_attempted: false };
+  if (shopState.shop_visible) {
+    secondRound.second_round_attempted = true;
+    await clickElement("#shopContinue");
+    await waitFor('document.querySelector("#ruleDraft")?.classList.contains("show") && document.querySelector("#draftRoundValue")?.textContent === "02"');
+    secondRound.second_draft_count = await evaluate('document.querySelectorAll(".rule-card").length');
+    await capture(`${viewport.name}-round-2-draft`);
+    await clickElement(".rule-card");
+    await wait(2200);
+    secondRound.second_phase = await evaluate('document.querySelector("#phaseValue")?.textContent');
+    secondRound.second_start_remaining = await evaluate('Number(document.querySelector("#remainingValue")?.textContent)');
+    await capture(`${viewport.name}-round-2-playing`);
+    let secondActions = 0;
+    while (secondActions < 30) {
+      const screen = await evaluate(`(() => {
+        if (document.querySelector("#roundSummary")?.classList.contains("show")) return { summary: true };
+        const card = document.querySelector(".game-card.is-active");
+        return card ? { summary: false, edible: card.classList.contains("card-edible") } : null;
+      })()`);
+      if (!screen || screen.summary) break;
+      if (viewport.mobile) await swipeElement(".game-card.is-active", screen.edible ? "eat" : "discard");
+      else await clickElement(screen.edible ? "#eatButton" : "#discardButton");
+      secondActions += 1;
+      await wait(230);
+    }
+    await wait(300);
+    secondRound.second_actions = secondActions;
+    secondRound.second_summary_visible = await evaluate('document.querySelector("#roundSummary")?.classList.contains("show")');
+    secondRound.second_remaining = await evaluate('Number(document.querySelector("#remainingValue")?.textContent)');
+    await capture(`${viewport.name}-round-2-summary`);
+  }
+  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, ...state, actions, ...roundComplete, ...shopState, ...secondRound });
 }
 
 socket.close();

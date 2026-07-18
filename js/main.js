@@ -14,7 +14,6 @@ const shopService = createShopService({ random: browserPlatform.random, create_i
 const ui = createUI(document);
 
 let shopBuffer = [];
-let shopArtReady = Promise.resolve();
 let actionLocked = true;
 let streak = { action: null, count: 0 };
 let soundEnabled = true;
@@ -79,15 +78,17 @@ function completeRound() {
 
   if (!outcome && shopBuffer.length === 0) {
     shopBuffer = shopService.getShopCards(state);
-    shopArtReady = ui.preloadCardArt(shopBuffer);
+    // Warm the shop art while the summary is visible, but never make game
+    // progression depend on image decoding. Safari may leave decode() pending
+    // for a long time on a slow or interrupted connection.
+    void ui.preloadCardArt(shopBuffer);
   }
 
-  ui.showRoundSummary(result, state, outcome, async () => {
+  ui.showRoundSummary(result, state, outcome, () => {
     if (outcome) {
       location.reload();
       return;
     }
-    await shopArtReady;
     ui.hideRoundSummary();
     transitionPhase(state, GAME_PHASES.SHOP, { round: state.current_round });
     enterShop();
@@ -151,7 +152,6 @@ function prepareRound() {
   resetRoundState(state);
   state.round.draw_pile = shuffle(state.deck.map((card) => ({ ...card, effect: card.effect ? { ...card.effect } : null })));
   shopBuffer = [];
-  shopArtReady = Promise.resolve();
   streak = { action: null, count: 0 };
   actionLocked = true;
   ui.renderTimer(0);
