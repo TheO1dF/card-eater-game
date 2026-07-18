@@ -213,6 +213,18 @@ test("永久规则同时参与计分并叠加倍率", () => {
   assert.equal(result.rule_results.length, 2);
 });
 
+test("阶段目标使用此前各轮累计总分，而不是只看目标轮得分", () => {
+  const state = readyState();
+  const engine = createRoundEngine();
+  state.current_round = 5;
+  state.total_score = 149;
+  engine.recordAction(state, "eat", instance("F001", "milestone"));
+  const result = engine.finalizeRound(state);
+  assert.equal(result.round_score, 1);
+  assert.equal(state.total_score, 150);
+  assert.deepEqual(engine.levelProgressCheck(state), { passed: true, target: 150 });
+});
+
 test("牺牲后爆发与吃弃交替规则能识别节奏", () => {
   const state = readyState();
   const engine = createRoundEngine();

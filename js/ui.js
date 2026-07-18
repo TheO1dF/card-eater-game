@@ -252,6 +252,18 @@ export function createUI(root) {
       const button = get("#summaryContinueBtn");
       const list = get("#summaryBreakdownList");
       const ruleResults = get("#summaryRuleResults");
+      const milestone = getNextMilestone(state.current_round);
+      const roundsRemaining = Math.max(0, milestone.round - state.current_round);
+      const milestoneProgress = milestone.target > 0
+        ? Math.max(0, Math.min(100, state.total_score / milestone.target * 100))
+        : 100;
+
+      setText(
+        get("#summaryMilestoneRounds"),
+        roundsRemaining === 0 ? `本轮为第 ${milestone.round} 轮目标结算` : `距离第 ${milestone.round} 轮目标还有 ${roundsRemaining} 轮`,
+      );
+      setText(get("#summaryMilestoneScore"), `累计 ${state.total_score} / 目标 ${milestone.target} 分`);
+      get("#summaryMilestoneFill")?.style.setProperty("width", `${milestoneProgress}%`);
 
       list.innerHTML = result.breakdown.map((item) => `<div class="receipt-line ${item.kind ?? ""}"><span>${item.label}</span><b>${item.text}</b></div>`).join("");
       ruleResults.innerHTML = result.rule_results
@@ -279,6 +291,7 @@ export function createUI(root) {
         button.textContent = "确认结算 · 进入商店";
         button.classList.remove("danger-action");
       }
+      button.disabled = false;
       button.onclick = async () => {
         const label = button.textContent;
         button.disabled = true;
@@ -286,8 +299,8 @@ export function createUI(root) {
         try {
           await onConfirm();
         } finally {
+          button.disabled = false;
           if (nodes.summary.classList.contains("show")) {
-            button.disabled = false;
             button.textContent = label;
           }
         }

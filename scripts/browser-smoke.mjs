@@ -189,7 +189,18 @@ for (const viewport of [
     secondRound.second_actions = secondActions;
     secondRound.second_summary_visible = await evaluate('document.querySelector("#roundSummary")?.classList.contains("show")');
     secondRound.second_remaining = await evaluate('Number(document.querySelector("#remainingValue")?.textContent)');
+    secondRound.second_continue_disabled = await evaluate('document.querySelector("#summaryContinueBtn")?.disabled');
+    secondRound.second_milestone_text = await evaluate('document.querySelector("#summaryMilestoneScore")?.textContent');
     await capture(`${viewport.name}-round-2-summary`);
+    if (secondRound.second_summary_visible) {
+      await clickElement("#summaryContinueBtn");
+      await waitFor('document.querySelector("#shopPanel")?.classList.contains("show")');
+      await clickElement("#shopContinue");
+      await waitFor('document.querySelector("#ruleDraft")?.classList.contains("show") && document.querySelector("#draftRoundValue")?.textContent === "03"');
+      secondRound.third_draft_visible = true;
+      secondRound.third_draft_count = await evaluate('document.querySelectorAll(".rule-card").length');
+      await capture(`${viewport.name}-round-3-draft`);
+    }
   }
   reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, ...state, actions, ...roundComplete, ...shopState, ...secondRound });
 }

@@ -451,6 +451,19 @@ button { -webkit-tap-highlight-color: transparent; }
 @keyframes countPop { 0% { transform: scale(.4); opacity: 0; } 45% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(.85); opacity: .4; } }
 
 .summary-panel { width: min(620px, 100%); }
+.milestone-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px 14px;
+  margin: -6px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #6c587e;
+  background: #17121f;
+}
+.milestone-summary span { color: var(--muted); font-size: 9px; }
+.milestone-summary strong { color: var(--gold); font-size: 11px; }
+.milestone-meter { grid-column: 1 / -1; height: 6px; border: 1px solid #4d4058; background: #0c0911; overflow: hidden; }
+.milestone-meter i { display: block; width: 0; height: 100%; background: var(--eat); transition: width 240ms steps(8, end); }
 .receipt { padding: 14px; border: 2px solid #594965; color: #34293b; background: #eadab9; box-shadow: inset 4px 0 0 rgba(73,54,77,.15); }
 .receipt-line { display: flex; justify-content: space-between; gap: 16px; padding: 8px 3px; border-bottom: 1px dashed #9c876f; font-size: 11px; }
 .receipt-line.detail { padding: 3px 10px; border: 0; color: #7d6a70; font-size: 9px; }
