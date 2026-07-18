@@ -8,13 +8,29 @@ const PHASE_LABELS = Object.freeze({
 const RARITY_CLASS = Object.freeze({ "普通": "common", "罕见": "uncommon", "稀有": "rare", "传奇": "legendary" });
 const EDIBILITY_LABEL = Object.freeze({ edible: "可食用", inedible: "不可食用" });
 const ROLE_LABEL = Object.freeze({ baseline: "基础", setup: "启动", payoff: "收割", sacrifice: "牺牲", engine: "成长引擎", economy: "经济" });
+const CARD_ART_VERSION = 4;
+const cardArtCache = new Map();
 const signed = (value) => value > 0 ? `+${value}` : String(value);
+const cardArtUrl = (card) => `./assets/${card.art_file}?v=${CARD_ART_VERSION}`;
+
+function warmCardArt(cards) {
+  cards.forEach((card) => {
+    if (!card.art_file) return;
+    const url = cardArtUrl(card);
+    if (cardArtCache.has(url)) return;
+    const image = new Image();
+    image.decoding = "async";
+    image.fetchPriority = "low";
+    image.src = url;
+    cardArtCache.set(url, image);
+  });
+}
 
 function spriteStyle(card) {
   const hue = Number(card.sprite_hue ?? 0);
   const scale = Number(card.sprite_scale ?? 1);
   if (card.art_file) {
-    return `--sprite-image:url('./assets/${card.art_file}?v=4');--sprite-x:50%;--sprite-y:50%;--sprite-size-x:100%;--sprite-size-y:100%;--sprite-hue:${hue}deg;--sprite-scale:${scale};`;
+    return `--sprite-image:url('${cardArtUrl(card)}');--sprite-x:50%;--sprite-y:50%;--sprite-size-x:100%;--sprite-size-y:100%;--sprite-hue:${hue}deg;--sprite-scale:${scale};`;
   }
   const columns = Math.max(1, Number(card.sprite_columns ?? 5));
   const rows = Math.max(1, Number(card.sprite_rows ?? 4));
@@ -128,6 +144,7 @@ export function createUI(root) {
   }
 
   return {
+    preloadCardArt: warmCardArt,
     openWelcome(onStart, bestScore = null) {
       setText(get("#welcomeBestScore"), bestScore ?? "--");
       const button = get("#startGameButton");

@@ -76,6 +76,11 @@ function completeRound() {
     });
   }
 
+  if (!outcome && shopBuffer.length === 0) {
+    shopBuffer = shopService.getShopCards(state);
+    ui.preloadCardArt(shopBuffer);
+  }
+
   ui.showRoundSummary(result, state, outcome, () => {
     if (outcome) {
       location.reload();
