@@ -20,14 +20,23 @@ const SPRITE_MAP = Object.freeze({
   U002: [5, 0, 1], U003: [5, 1, 1], U004: [5, 2, 1], U005: [5, 3, 1], U006: [5, 4, 1],
 });
 
+let runtimeArtIndex = 0;
 const card = (definition) => {
   const [sheet, spriteX, spriteY] = SPRITE_MAP[definition.id] ?? [null, definition.sprite_x ?? 0, definition.sprite_y ?? 0];
+  const artIndex = runtimeArtIndex;
+  runtimeArtIndex += 1;
   return {
     sprite_hue: 0,
     sprite_scale: 1,
     synergy_tags: [],
     ...definition,
     art_file: `cards/${definition.id.toLowerCase()}.webp`,
+    runtime_art_mode: artIndex < 7 ? "individual" : "atlas",
+    runtime_atlas: "cards-atlas.webp",
+    runtime_columns: 10,
+    runtime_rows: 5,
+    runtime_x: artIndex % 10,
+    runtime_y: Math.floor(artIndex / 10),
     sprite_sheet: sheet ? `card-sprites-set-${sheet}.webp` : "card-sprites.webp",
     sprite_columns: 5,
     sprite_rows: sheet ? 2 : 4,

@@ -9,9 +9,12 @@ const RARITY_CLASS = Object.freeze({ "普通": "common", "罕见": "uncommon", "
 const EDIBILITY_LABEL = Object.freeze({ edible: "可食用", inedible: "不可食用" });
 const ROLE_LABEL = Object.freeze({ baseline: "基础", setup: "启动", payoff: "收割", sacrifice: "牺牲", engine: "成长引擎", economy: "经济" });
 const CARD_ART_VERSION = 4;
+const CARD_ATLAS_VERSION = 6;
 const cardArtCache = new Map();
 const signed = (value) => value > 0 ? `+${value}` : String(value);
-const cardArtUrl = (card) => `./assets/${card.art_file}?v=${CARD_ART_VERSION}`;
+const cardArtUrl = (card) => card.runtime_art_mode === "atlas"
+  ? `./assets/${card.runtime_atlas}?v=${CARD_ATLAS_VERSION}`
+  : `./assets/${card.art_file}?v=${CARD_ART_VERSION}`;
 
 function warmCardArt(cards) {
   cards.forEach((card) => {
@@ -29,6 +32,13 @@ function warmCardArt(cards) {
 function spriteStyle(card) {
   const hue = Number(card.sprite_hue ?? 0);
   const scale = Number(card.sprite_scale ?? 1);
+  if (card.runtime_art_mode === "atlas") {
+    const columns = Number(card.runtime_columns);
+    const rows = Number(card.runtime_rows);
+    const x = Number(card.runtime_x) * 100 / (columns - 1);
+    const y = Number(card.runtime_y) * 100 / (rows - 1);
+    return `--sprite-image:url('${cardArtUrl(card)}');--sprite-x:${x}%;--sprite-y:${y}%;--sprite-size-x:${columns * 100}%;--sprite-size-y:${rows * 100}%;--sprite-hue:${hue}deg;--sprite-scale:${scale};`;
+  }
   if (card.art_file) {
     return `--sprite-image:url('${cardArtUrl(card)}');--sprite-x:50%;--sprite-y:50%;--sprite-size-x:100%;--sprite-size-y:100%;--sprite-hue:${hue}deg;--sprite-scale:${scale};`;
   }

@@ -50,14 +50,27 @@ test("50 张卡牌全部使用独立卡图坐标，商店卡不再借图换色",
   assert.equal(cards.filter((card) => card.sprite_rows === 2).length, 43);
 });
 
-test("H5 使用 50 张按需 WebP 卡图且总预算低于 650KB", () => {
-  const artFiles = Object.values(CARD_LIBRARY).map((card) => card.art_file);
+test("H5 开局使用独立小图，中后期卡池共用单请求图集", () => {
+  const cards = Object.values(CARD_LIBRARY);
+  const runtimeKeys = cards.map((card) => `${card.runtime_x}:${card.runtime_y}`);
+  assert.equal(new Set(runtimeKeys).size, 50);
+  assert.equal(cards.filter((card) => card.runtime_art_mode === "individual").length, 7);
+  assert.equal(cards.filter((card) => card.runtime_art_mode === "atlas").length, 43);
+
+  const artFiles = cards.map((card) => card.art_file);
   assert.equal(new Set(artFiles).size, 50);
   assert.ok(artFiles.every((file) => file.endsWith(".webp")));
   const sizes = artFiles.map((file) => statSync(new URL(`../assets/${file}`, import.meta.url)).size);
   assert.ok(Math.max(...sizes) < 30_000, `最大单图体积为 ${Math.max(...sizes)} bytes`);
   const totalBytes = sizes.reduce((sum, size) => sum + size, 0);
   assert.ok(totalBytes < 650_000, `全部卡图体积为 ${totalBytes} bytes`);
+
+  const starterBytes = cards.slice(0, 7).reduce((sum, card) => (
+    sum + statSync(new URL(`../assets/${card.art_file}`, import.meta.url)).size
+  ), 0);
+  assert.ok(starterBytes < 70_000, `开局卡图体积为 ${starterBytes} bytes`);
+  const atlasBytes = statSync(new URL("../assets/cards-atlas.webp", import.meta.url)).size;
+  assert.ok(atlasBytes < 500_000, `中后期图集体积为 ${atlasBytes} bytes`);
 });
 
 test("卡牌均带构筑角色、联动标签与可移植的效果数据", () => {
