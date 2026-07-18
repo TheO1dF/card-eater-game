@@ -47,6 +47,15 @@ async function evaluate(expression) {
   return result.result.value;
 }
 
+async function waitFor(expression, timeout = 8000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (await evaluate(expression)) return;
+    await wait(100);
+  }
+  throw new Error(`Timed out waiting for: ${expression}`);
+}
+
 async function clickElement(selector) {
   const point = await evaluate(`(() => {
     const rect = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect();
@@ -81,10 +90,10 @@ for (const viewport of [
     screenHeight: viewport.height,
   });
   await send("Page.navigate", { url: `${gameUrl}?smoke=${viewport.name}-${Date.now()}` });
-  await wait(650);
+  await waitFor('document.readyState === "complete" && typeof document.querySelector("#startGameButton")?.onclick === "function"');
   await capture(`${viewport.name}-welcome`);
   await clickElement("#startGameButton");
-  await wait(300);
+  await waitFor('document.querySelectorAll(".rule-card").length > 0');
   await capture(`${viewport.name}-draft`);
   const draftCount = await evaluate('document.querySelectorAll(".rule-card").length');
   const audioBeforeRule = await evaluate('(async () => (await import("./js/audio.js")).getAudioStatus())()');
