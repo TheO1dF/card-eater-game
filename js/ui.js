@@ -17,16 +17,19 @@ const cardArtUrl = (card) => card.runtime_art_mode === "atlas"
   : `./assets/${card.art_file}?v=${CARD_ART_VERSION}`;
 
 function warmCardArt(cards) {
-  cards.forEach((card) => {
+  const ready = cards.map((card) => {
     if (!card.art_file) return;
     const url = cardArtUrl(card);
-    if (cardArtCache.has(url)) return;
+    if (cardArtCache.has(url)) return cardArtCache.get(url).ready;
     const image = new Image();
     image.decoding = "async";
-    image.fetchPriority = "low";
+    image.fetchPriority = "high";
     image.src = url;
-    cardArtCache.set(url, image);
+    const imageReady = image.decode().catch(() => undefined);
+    cardArtCache.set(url, { image, ready: imageReady });
+    return imageReady;
   });
+  return Promise.all(ready.filter(Boolean));
 }
 
 function spriteStyle(card) {
@@ -276,7 +279,19 @@ export function createUI(root) {
         button.textContent = "确认结算 · 进入商店";
         button.classList.remove("danger-action");
       }
-      button.onclick = onConfirm;
+      button.onclick = async () => {
+        const label = button.textContent;
+        button.disabled = true;
+        if (!outcome) button.textContent = "正在准备商店…";
+        try {
+          await onConfirm();
+        } finally {
+          if (nodes.summary.classList.contains("show")) {
+            button.disabled = false;
+            button.textContent = label;
+          }
+        }
+      };
       nodes.summary.classList.add("show");
     },
     hideRoundSummary() { nodes.summary.classList.remove("show"); },

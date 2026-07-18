@@ -128,7 +128,7 @@ for (const viewport of [
   })`);
   if (roundComplete.summary_visible) {
     await clickElement("#summaryContinueBtn");
-    await wait(350);
+    await waitFor('document.querySelector("#shopPanel")?.classList.contains("show")');
     await capture(`${viewport.name}-shop`);
   }
   const shopState = await evaluate(`({

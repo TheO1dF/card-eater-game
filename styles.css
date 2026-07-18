@@ -478,6 +478,7 @@ button { -webkit-tap-highlight-color: transparent; }
   font-weight: 900;
 }
 .primary-button:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 #09070d; }
+.primary-button:disabled { cursor: wait; opacity: .72; filter: saturate(.7); }
 .primary-button.danger-action { color: #421d29; background: var(--danger); }
 
 .shop-panel-inner { width: min(940px, 100%); }
