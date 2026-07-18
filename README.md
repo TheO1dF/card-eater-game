@@ -39,6 +39,6 @@ npm run build
 - `js/gesture.js`：浏览器 Pointer Events 输入层。
 - `js/platform.js`：时间、随机数、ID、震动、本地记录适配层。
 - `js/ui.js`：DOM 渲染；`js/main.js`：流程编排。
-- `assets/card-sprites*.webp`：H5 使用的 6 张轻量运行时图集，合计约 772KB；同名 PNG 保留为未来美术修改与 Godot 导入源文件。
+- `assets/cards/*.webp`：H5 按需加载的 50 张独立卡图，平均约 12KB、合计约 582KB；图集 WebP 与同名 PNG 保留为未来美术修改和 Godot 导入资源。
 
 平衡模型见 [`docs/GAME_BALANCE.md`](./docs/GAME_BALANCE.md)，Godot 迁移契约见 [`docs/GODOT_MIGRATION.md`](./docs/GODOT_MIGRATION.md)，Cloudflare 步骤见 [`docs/CLOUDFLARE_DEPLOY.md`](./docs/CLOUDFLARE_DEPLOY.md)。

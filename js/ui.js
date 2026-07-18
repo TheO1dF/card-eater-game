@@ -11,6 +11,11 @@ const ROLE_LABEL = Object.freeze({ baseline: "基础", setup: "启动", payoff: 
 const signed = (value) => value > 0 ? `+${value}` : String(value);
 
 function spriteStyle(card) {
+  const hue = Number(card.sprite_hue ?? 0);
+  const scale = Number(card.sprite_scale ?? 1);
+  if (card.art_file) {
+    return `--sprite-image:url('./assets/${card.art_file}?v=4');--sprite-x:50%;--sprite-y:50%;--sprite-size-x:100%;--sprite-size-y:100%;--sprite-hue:${hue}deg;--sprite-scale:${scale};`;
+  }
   const columns = Math.max(1, Number(card.sprite_columns ?? 5));
   const rows = Math.max(1, Number(card.sprite_rows ?? 4));
   const spriteX = Number(card.sprite_x ?? 0);
@@ -27,8 +32,6 @@ function spriteStyle(card) {
     : spriteY * (rows === 1 ? 0 : 100 / (rows - 1));
   const backgroundWidth = generatedSheet ? "450%" : `${columns * 100}%`;
   const backgroundHeight = generatedSheet ? "auto" : `${rows * 100}%`;
-  const hue = Number(card.sprite_hue ?? 0);
-  const scale = Number(card.sprite_scale ?? 1);
   const sheet = card.sprite_sheet ?? "card-sprites.webp";
   return `--sprite-image:url('./assets/${sheet}?v=3');--sprite-x:${x}%;--sprite-y:${y}%;--sprite-size-x:${backgroundWidth};--sprite-size-y:${backgroundHeight};--sprite-hue:${hue}deg;--sprite-scale:${scale};`;
 }

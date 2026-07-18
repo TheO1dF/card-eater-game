@@ -27,6 +27,7 @@ const card = (definition) => {
     sprite_scale: 1,
     synergy_tags: [],
     ...definition,
+    art_file: `cards/${definition.id.toLowerCase()}.webp`,
     sprite_sheet: sheet ? `card-sprites-set-${sheet}.webp` : "card-sprites.webp",
     sprite_columns: 5,
     sprite_rows: sheet ? 2 : 4,
