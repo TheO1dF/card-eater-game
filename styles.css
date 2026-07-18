@@ -279,6 +279,7 @@ button { -webkit-tap-highlight-color: transparent; }
   align-self: stretch;
   display: grid;
   place-items: center;
+  overflow: hidden;
   min-height: 82px;
   border: 2px solid rgba(46,34,53,.6);
   background:
@@ -298,8 +299,9 @@ button { -webkit-tap-highlight-color: transparent; }
   transform: scale(var(--sprite-scale, 1));
 }
 .card-art .game-sprite {
-  width: min(72%, 174px);
+  width: min(62%, 150px);
   aspect-ratio: 1;
+  transform-origin: center;
   filter: hue-rotate(var(--sprite-hue, 0deg)) saturate(.94) drop-shadow(5px 7px 0 rgba(38,28,43,.24)) drop-shadow(0 8px 10px rgba(38,28,43,.2));
 }
 
@@ -493,8 +495,9 @@ button { -webkit-tap-highlight-color: transparent; }
   position: relative;
   min-height: 142px;
   display: grid;
-  grid-template-columns: 42px 1fr;
-  gap: 10px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
   padding: 12px;
   border: 2px solid #53425f;
   color: var(--paper);
@@ -504,16 +507,16 @@ button { -webkit-tap-highlight-color: transparent; }
   cursor: pointer;
 }
 .shop-card:hover { border-color: var(--gold); }
-.shop-card-icon { display: block; width: 42px; height: 42px; border: 1px solid #685671; background-color: #18131f; filter: hue-rotate(var(--sprite-hue, 0deg)) drop-shadow(2px 3px 0 rgba(0,0,0,.35)); }
+.shop-card-icon { display: block; width: 46px; height: 46px; place-self: start center; border: 1px solid #685671; background-color: #18131f; background-clip: padding-box; transform-origin: center; filter: hue-rotate(var(--sprite-hue, 0deg)) drop-shadow(2px 3px 0 rgba(0,0,0,.35)); }
 .shop-card-copy { display: flex; flex-direction: column; min-width: 0; }
-.shop-card-copy small { color: #9a88a4; font-size: 7px; }
-.shop-card-copy strong { margin-top: 4px; font-size: 13px; }
+.shop-card-copy small { color: #9a88a4; font-size: 7px; line-height: 1.35; }
+.shop-card-copy strong { margin-top: 4px; font-size: 13px; line-height: 1.2; }
 .shop-card-copy em, .shop-card-copy i { margin-top: 6px; color: #bbaaC5; font-size: 8px; font-style: normal; line-height: 1.35; }
 .shop-card-copy i { color: #8e7e99; }
 .price-tag { position: absolute; right: 8px; bottom: 8px; padding: 4px 6px; color: #352717; background: var(--gold); font-size: 9px; font-weight: 900; }
 .deck-manager { max-height: 150px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; padding: 3px; overflow: auto; }
-.deck-chip { min-width: 0; display: grid; grid-template-columns: 28px 1fr; gap: 2px 6px; padding: 7px; border: 1px solid #554761; color: var(--paper); background: #282131; text-align: left; cursor: pointer; }
-.deck-chip > span { grid-row: span 3; align-self: center; width: 28px; height: 28px; filter: hue-rotate(var(--sprite-hue, 0deg)) drop-shadow(2px 2px 0 rgba(0,0,0,.3)); }
+.deck-chip { min-width: 0; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 2px 7px; padding: 7px; border: 1px solid #554761; color: var(--paper); background: #282131; text-align: left; cursor: pointer; }
+.deck-chip > span { grid-row: span 3; place-self: center; width: 30px; height: 30px; border: 1px solid #493b52; background-color: #18131f; background-clip: padding-box; transform-origin: center; filter: hue-rotate(var(--sprite-hue, 0deg)) drop-shadow(2px 2px 0 rgba(0,0,0,.3)); }
 .deck-chip b { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .deck-chip small { color: var(--muted); font-size: 7px; }
 .deck-chip i { color: var(--danger); font-size: 7px; font-style: normal; }

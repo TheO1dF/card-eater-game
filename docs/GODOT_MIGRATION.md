@@ -44,6 +44,8 @@
 
 `active_rules` 是本局永久规则集合，每轮只追加、不替换；`rule_history` 用于回放与分析。卡牌稳定字段包括 `id/name/rarity/type/edibility/eat_points/discard_points/role/synergy_tags/effect`。像素资源由原始 5×4 初始牌图集和 5 张新生成的 5×2 透明图集组成，每张卡保存 `art_file/runtime_atlas/runtime_x/runtime_y/sprite_sheet/sprite_x/sprite_y`；H5 使用“7 张开局独立小图 + 单张中后期紧凑图集”，仓库同时保留独立 WebP 与原始图集，Godot 可直接使用独立纹理或按任一图集字段建立 `AtlasTexture`。
 
+运行时卡图不是直接按 AI 图集的固定格子裸切：`scripts/optimize-sprites.mjs` 会先移除跨格孤立像素，再根据 alpha 主体包围盒缩放到统一安全区并光学居中。Godot 侧若直接使用 `assets/cards/*.webp`，可获得与 H5 一致的图标尺寸和锚点；重新生成美术资源后应先运行该导出流程。
+
 `effect.kind` 使用数据驱动分派，当前类型包括：`buff_next_action`、`debuff_next_action`、`clear_debuff`、`permanent_growth_eat`、`gold_economy`、`shop_discount`、`scale_by_history`、`retro_multiplier_eaten_tag`、`bonus_if_previous`、`bonus_if_position`、`copy_previous_score`、`discard_all_remaining`。移植时按 `kind` 建立 Effect Resolver，不要为具体卡牌 ID 写分支。
 
 `actions` 保存全局顺序；`eat_sequence` 与 `discard_sequence` 只接收对应行为。新 Buff 在当前牌结算后加入，所以只影响未来牌；永久成长写回 `deck` 中 UUID 相同的牌，不写入当轮复制的 `draw_pile`。

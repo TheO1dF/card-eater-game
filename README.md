@@ -39,6 +39,6 @@ npm run build
 - `js/gesture.js`：浏览器 Pointer Events 输入层。
 - `js/platform.js`：时间、随机数、ID、震动、本地记录适配层。
 - `js/ui.js`：DOM 渲染；`js/main.js`：流程编排。
-- `assets/cards/*.webp` 与 `cards-atlas.webp`：H5 开局预载约 60KB 的 7 张独立卡图，并在游玩期间低优先级加载约 433KB 的中后期紧凑图集；原始图集继续保留给美术修改和 Godot 导入。
+- `assets/cards/*.webp` 与 `cards-atlas.webp`：导出器按 alpha 主体自动去除跨格碎片、缩放到统一安全区并居中；H5 开局预载 7 张独立卡图，游玩期间低优先级加载中后期紧凑图集，原始图集继续保留给美术修改和 Godot 导入。
 
 平衡模型见 [`docs/GAME_BALANCE.md`](./docs/GAME_BALANCE.md)，Godot 迁移契约见 [`docs/GODOT_MIGRATION.md`](./docs/GODOT_MIGRATION.md)，Cloudflare 步骤见 [`docs/CLOUDFLARE_DEPLOY.md`](./docs/CLOUDFLARE_DEPLOY.md)。

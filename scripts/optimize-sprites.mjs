@@ -98,16 +98,129 @@ const expression = `(async () => {
     context.drawImage(image, -card.sprite_x * outputSize, -card.sprite_y * outputSize, width, height);
   }
 
+  function normalizeCard(source, outputSize) {
+    const sourceContext = source.getContext("2d", { alpha: true });
+    const imageData = sourceContext.getImageData(0, 0, source.width, source.height);
+    const pixels = imageData.data;
+    const labels = new Int32Array(source.width * source.height);
+    const components = [];
+    let nextLabel = 1;
+
+    for (let index = 0; index < labels.length; index += 1) {
+      if (labels[index] !== 0 || pixels[index * 4 + 3] < 16) continue;
+      const component = {
+        label: nextLabel,
+        count: 0,
+        minX: source.width,
+        minY: source.height,
+        maxX: -1,
+        maxY: -1,
+      };
+      const queue = [index];
+      labels[index] = nextLabel;
+      for (let cursor = 0; cursor < queue.length; cursor += 1) {
+        const current = queue[cursor];
+        const x = current % source.width;
+        const y = Math.floor(current / source.width);
+        component.count += 1;
+        component.minX = Math.min(component.minX, x);
+        component.minY = Math.min(component.minY, y);
+        component.maxX = Math.max(component.maxX, x);
+        component.maxY = Math.max(component.maxY, y);
+        for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+          for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+            if (offsetX === 0 && offsetY === 0) continue;
+            const nextX = x + offsetX;
+            const nextY = y + offsetY;
+            if (nextX < 0 || nextX >= source.width || nextY < 0 || nextY >= source.height) continue;
+            const next = nextY * source.width + nextX;
+            if (labels[next] !== 0 || pixels[next * 4 + 3] < 16) continue;
+            labels[next] = nextLabel;
+            queue.push(next);
+          }
+        }
+      }
+      components.push(component);
+      nextLabel += 1;
+    }
+
+    if (components.length === 0) return source;
+    const largest = components.reduce((best, component) => (
+      component.count > best.count ? component : best
+    ));
+    const largestExtent = Math.max(
+      largest.maxX - largest.minX + 1,
+      largest.maxY - largest.minY + 1,
+    );
+    const keptLabels = new Set([largest.label]);
+    components.forEach((component) => {
+      const gapX = Math.max(0, largest.minX - component.maxX, component.minX - largest.maxX);
+      const gapY = Math.max(0, largest.minY - component.maxY, component.minY - largest.maxY);
+      const gap = Math.hypot(gapX, gapY);
+      if (component.count >= largest.count * 0.18 || gap <= largestExtent * 0.12) {
+        keptLabels.add(component.label);
+      }
+    });
+
+    let minX = source.width;
+    let minY = source.height;
+    let maxX = -1;
+    let maxY = -1;
+    components.forEach((component) => {
+      if (!keptLabels.has(component.label)) return;
+      minX = Math.min(minX, component.minX);
+      minY = Math.min(minY, component.minY);
+      maxX = Math.max(maxX, component.maxX);
+      maxY = Math.max(maxY, component.maxY);
+    });
+    for (let index = 0; index < labels.length; index += 1) {
+      if (keptLabels.has(labels[index])) continue;
+      const pixel = index * 4;
+      pixels[pixel] = 0;
+      pixels[pixel + 1] = 0;
+      pixels[pixel + 2] = 0;
+      pixels[pixel + 3] = 0;
+    }
+    sourceContext.putImageData(imageData, 0, 0);
+
+    const sourceWidth = maxX - minX + 1;
+    const sourceHeight = maxY - minY + 1;
+    const targetExtent = Math.round(outputSize * 0.78);
+    const scale = Math.min(targetExtent / sourceWidth, targetExtent / sourceHeight);
+    const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+    const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+    const targetX = Math.round((outputSize - targetWidth) / 2);
+    const targetY = Math.round((outputSize - targetHeight) / 2);
+    const output = document.createElement("canvas");
+    output.width = outputSize;
+    output.height = outputSize;
+    const outputContext = output.getContext("2d", { alpha: true });
+    outputContext.imageSmoothingEnabled = false;
+    outputContext.drawImage(
+      source,
+      minX,
+      minY,
+      sourceWidth,
+      sourceHeight,
+      targetX,
+      targetY,
+      targetWidth,
+      targetHeight,
+    );
+    return output;
+  }
+
   let cardIndex = 0;
   for (const card of Object.values(CARD_LIBRARY)) {
     const source = card.sprite_sheet.replace(/\\.webp$/u, ".png");
     const image = loadedSheets.get(source);
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const context = canvas.getContext("2d", { alpha: true });
+    const rawCanvas = document.createElement("canvas");
+    rawCanvas.width = size;
+    rawCanvas.height = size;
+    const context = rawCanvas.getContext("2d", { alpha: true });
     context.imageSmoothingEnabled = false;
     drawCard(context, card, image, size);
+    const canvas = normalizeCard(rawCanvas, size);
 
     const dataUrl = canvas.toDataURL("image/webp", quality);
     cardOutput.push({ id: card.id.toLowerCase(), data: dataUrl.slice(dataUrl.indexOf(",") + 1) });

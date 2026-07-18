@@ -8,8 +8,8 @@ const PHASE_LABELS = Object.freeze({
 const RARITY_CLASS = Object.freeze({ "普通": "common", "罕见": "uncommon", "稀有": "rare", "传奇": "legendary" });
 const EDIBILITY_LABEL = Object.freeze({ edible: "可食用", inedible: "不可食用" });
 const ROLE_LABEL = Object.freeze({ baseline: "基础", setup: "启动", payoff: "收割", sacrifice: "牺牲", engine: "成长引擎", economy: "经济" });
-const CARD_ART_VERSION = 4;
-const CARD_ATLAS_VERSION = 6;
+const CARD_ART_VERSION = 5;
+const CARD_ATLAS_VERSION = 7;
 const cardArtCache = new Map();
 const signed = (value) => value > 0 ? `+${value}` : String(value);
 const cardArtUrl = (card) => card.runtime_art_mode === "atlas"
