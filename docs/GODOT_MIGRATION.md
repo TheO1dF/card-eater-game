@@ -42,7 +42,7 @@
 }
 ```
 
-`active_rules` 是本局永久规则集合，每轮只追加、不替换；`rule_history` 用于回放与分析。卡牌稳定字段包括 `id/name/rarity/type/edibility/eat_points/discard_points/role/synergy_tags/effect`。像素资源由原始 5×4 初始牌图集和 5 张新生成的 5×2 透明图集组成，每张卡保存 `sprite_sheet/sprite_columns/sprite_rows/sprite_x/sprite_y`；Godot 可直接按这些字段建立 `AtlasTexture`，无需再依赖同图换色。
+`active_rules` 是本局永久规则集合，每轮只追加、不替换；`rule_history` 用于回放与分析。卡牌稳定字段包括 `id/name/rarity/type/edibility/eat_points/discard_points/role/synergy_tags/effect`。像素资源由原始 5×4 初始牌图集和 5 张新生成的 5×2 透明图集组成，每张卡保存 `sprite_sheet/sprite_columns/sprite_rows/sprite_x/sprite_y`；H5 默认读取轻量 WebP，仓库保留同名 PNG 源图，Godot 可任选其一建立 `AtlasTexture`，无需再依赖同图换色。
 
 `effect.kind` 使用数据驱动分派，当前类型包括：`buff_next_action`、`debuff_next_action`、`clear_debuff`、`permanent_growth_eat`、`gold_economy`、`shop_discount`、`scale_by_history`、`retro_multiplier_eaten_tag`、`bonus_if_previous`、`bonus_if_position`、`copy_previous_score`、`discard_all_remaining`。移植时按 `kind` 建立 Effect Resolver，不要为具体卡牌 ID 写分支。
 

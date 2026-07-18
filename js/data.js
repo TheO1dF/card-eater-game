@@ -5,7 +5,8 @@ const INEDIBLE = "inedible";
 const { BASELINE, SETUP, PAYOFF, SACRIFICE, ENGINE, ECONOMY } = CARD_ROLES;
 
 // The original starter atlas plus five generated 5x2 sheets give every card a
-// unique silhouette while keeping coordinates serializable for Godot.
+// unique silhouette. Runtime WebP atlases keep H5 downloads small, while the
+// matching source PNG files remain available for future art and Godot work.
 const SPRITE_MAP = Object.freeze({
   F001: [0, 0, 0], F002: [0, 1, 0], F003: [1, 2, 0], F004: [1, 3, 0], F005: [1, 4, 0],
   F006: [1, 0, 1], F007: [1, 1, 1], F008: [1, 2, 1], V001: [1, 3, 1], V002: [1, 4, 1],
@@ -26,7 +27,7 @@ const card = (definition) => {
     sprite_scale: 1,
     synergy_tags: [],
     ...definition,
-    sprite_sheet: sheet ? `card-sprites-set-${sheet}.png` : "card-sprites.png",
+    sprite_sheet: sheet ? `card-sprites-set-${sheet}.webp` : "card-sprites.webp",
     sprite_columns: 5,
     sprite_rows: sheet ? 2 : 4,
     sprite_x: spriteX,

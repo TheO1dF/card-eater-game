@@ -12,6 +12,7 @@ const contentTypes = {
   ".mjs": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
+  ".webp": "image/webp",
   ".svg": "image/svg+xml",
 };
 
@@ -36,4 +37,3 @@ const server = createServer(async (request, response) => {
 server.listen(port, "127.0.0.1", () => {
   console.log(`CardEater: http://127.0.0.1:${port}`);
 });
-

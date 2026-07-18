@@ -290,7 +290,7 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 .game-sprite {
   display: block;
-  background-image: var(--sprite-image, url("./assets/card-sprites.png?v=1"));
+  background-image: var(--sprite-image, url("./assets/card-sprites.webp?v=3"));
   background-repeat: no-repeat;
   background-position: var(--sprite-x, 0%) var(--sprite-y, 0%);
   background-size: var(--sprite-size-x, 500%) var(--sprite-size-y, 400%);

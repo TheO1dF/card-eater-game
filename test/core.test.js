@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { statSync } from "node:fs";
 
 import { CARD_ROLES, getShopWeight, RARITY_MODEL } from "../js/balance.js";
 import { GAME_CONFIG } from "../js/config.js";
@@ -47,6 +48,16 @@ test("50 张卡牌全部使用独立卡图坐标，商店卡不再借图换色",
   assert.equal(new Set(spriteKeys).size, 50);
   assert.equal(cards.filter((card) => card.sprite_rows === 4).length, 7);
   assert.equal(cards.filter((card) => card.sprite_rows === 2).length, 43);
+});
+
+test("H5 运行时图集使用 WebP 且总传输预算低于 900KB", () => {
+  const sheets = new Set(Object.values(CARD_LIBRARY).map((card) => card.sprite_sheet));
+  assert.equal(sheets.size, 6);
+  assert.ok([...sheets].every((sheet) => sheet.endsWith(".webp")));
+  const totalBytes = [...sheets].reduce((sum, sheet) => (
+    sum + statSync(new URL(`../assets/${sheet}`, import.meta.url)).size
+  ), 0);
+  assert.ok(totalBytes < 900_000, `运行时图集体积为 ${totalBytes} bytes`);
 });
 
 test("卡牌均带构筑角色、联动标签与可移植的效果数据", () => {

@@ -29,8 +29,8 @@ function spriteStyle(card) {
   const backgroundHeight = generatedSheet ? "auto" : `${rows * 100}%`;
   const hue = Number(card.sprite_hue ?? 0);
   const scale = Number(card.sprite_scale ?? 1);
-  const sheet = card.sprite_sheet ?? "card-sprites.png";
-  return `--sprite-image:url('./assets/${sheet}?v=2');--sprite-x:${x}%;--sprite-y:${y}%;--sprite-size-x:${backgroundWidth};--sprite-size-y:${backgroundHeight};--sprite-hue:${hue}deg;--sprite-scale:${scale};`;
+  const sheet = card.sprite_sheet ?? "card-sprites.webp";
+  return `--sprite-image:url('./assets/${sheet}?v=3');--sprite-x:${x}%;--sprite-y:${y}%;--sprite-size-x:${backgroundWidth};--sprite-size-y:${backgroundHeight};--sprite-hue:${hue}deg;--sprite-scale:${scale};`;
 }
 
 function setText(node, value) {
