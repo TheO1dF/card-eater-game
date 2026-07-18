@@ -1,134 +1,193 @@
-const DEFAULT_CONFIG = {
-  discardThreshold: 120,
-  eatThreshold: 120,
-  maxRotation: 18,
-  springDuration: 180,
-};
+const DEFAULT_CONFIG = Object.freeze({
+  min_threshold: 72,
+  max_threshold: 116,
+  threshold_ratio: 0.22,
+  flick_velocity: 0.62,
+  min_flick_distance: 24,
+  projection_ms: 120,
+  max_rotation: 11,
+  return_duration: 260,
+  exit_duration: 170,
+});
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function getPoint(event) {
-  if (event.touches && event.touches.length > 0) return { x: event.touches[0].clientX, y: event.touches[0].clientY };
-  if (event.changedTouches && event.changedTouches.length > 0) return { x: event.changedTouches[0].clientX, y: event.changedTouches[0].clientY };
-  return { x: event.clientX, y: event.clientY };
-}
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export function createGestureController(options = {}) {
   const config = { ...DEFAULT_CONFIG, ...options };
-  let current = null;
-  let cardMeta = null;
-  let startX = 0, startY = 0, deltaX = 0, deltaY = 0;
-  let rafId = 0;
-  let dragging = false;
+  let element = null;
+  let card = null;
+  let pointerId = null;
+  let startX = 0;
+  let startY = 0;
+  let deltaX = 0;
+  let deltaY = 0;
+  let velocityY = 0;
+  let lastY = 0;
+  let lastTime = 0;
+  let threshold = config.min_threshold;
+  let frame = 0;
+  let resolving = false;
 
-  function applyTransform(x, y, rotation, opacity) {
-    if (!current) return;
-    current.style.transform = `translate3d(${x}px, ${y}px, 0) rotate(${rotation}deg) scale(1.02)`;
-    current.style.opacity = String(opacity);
-  }
-
-  function animateBack() {
-    if (!current) return;
-    current.style.transition = `transform ${config.springDuration}ms ease, opacity ${config.springDuration}ms ease`;
-    current.style.transform = "";
-    current.style.opacity = "1";
-    window.setTimeout(() => {
-      if (current) current.style.transition = "";
-    }, config.springDuration);
-  }
-
-  function unbindWindowListeners() {
-    window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", onEnd);
-    window.removeEventListener("pointercancel", onEnd);
-    window.removeEventListener("mousemove", onMove);
-    window.removeEventListener("mouseup", onEnd);
-  }
-
-  function resolveAction() {
-    if (!current || !cardMeta) return;
-    const action = deltaY <= -config.discardThreshold ? "discard" : deltaY >= config.eatThreshold ? "eat" : null;
-
-    if (!action) {
-      animateBack();
-      return; // 不做任何事，保留监听器
-    }
-
-    current.style.transition = `transform ${config.springDuration}ms ease-out, opacity ${config.springDuration}ms ease-out`;
-    current.style.transform = `translate3d(${deltaX * 1.6}px, ${action === 'discard' ? -300 : 300}px, 0) rotate(${clamp(deltaX / 8, -45, 45)}deg) scale(0.9)`;
-    current.style.opacity = "0";
-    
-    const finalAction = action;
-    const finalCardMeta = cardMeta;
-    
-    // 清理工作现在都由 onEnd 负责
-    current = null;
-    cardMeta = null;
-
-    setTimeout(() => {
-      if (finalAction === "discard" && config.onDiscard) config.onDiscard(finalCardMeta);
-      if (finalAction === "eat" && config.onEat) config.onEat(finalCardMeta);
-    }, config.springDuration);
-  }
-  
-  function onMove(event) {
-    if (!dragging || !current) return;
-    event.preventDefault();
-    const point = getPoint(event);
-    deltaX = point.x - startX;
-    deltaY = point.y - startY;
-    cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(() => {
-      const rotation = clamp(deltaX / 8, -config.maxRotation, config.maxRotation);
-      const opacity = clamp(1 - Math.abs(deltaY) / 520, 0.3, 1);
-      applyTransform(deltaX, deltaY, rotation, opacity);
+  function emitProgress() {
+    const progress = clamp(Math.abs(deltaY) / threshold, 0, 1);
+    config.onProgress?.({
+      progress,
+      direction: deltaY < -2 ? "discard" : deltaY > 2 ? "eat" : null,
+      delta_y: deltaY,
     });
   }
 
-  // 【核心修复】onEnd 负责所有清理工作，确保状态一定被重置
-  function onEnd(event) {
-    if (!dragging) return;
-    event.preventDefault();
-    unbindWindowListeners();
-    resolveAction();
-    dragging = false; // 无论如何都重置拖拽状态
+  function paint() {
+    if (!element) return;
+    const visualX = deltaX * 0.34;
+    const rotation = clamp(deltaX / 14, -config.max_rotation, config.max_rotation);
+    const lift = Math.min(Math.abs(deltaY) / 900, 0.025);
+    element.style.transform = `translate3d(${visualX}px, ${deltaY}px, 0) rotate(${rotation}deg) scale(${1.015 + lift})`;
+    emitProgress();
   }
-  
-  function onStart(event) {
-    if (dragging || !current) return;
-    if (event.button !== undefined && event.button !== 0) return;
-    event.preventDefault();
 
-    dragging = true;
-    const point = getPoint(event);
-    startX = point.x;
-    startY = point.y;
+  function requestPaint() {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(paint);
+  }
+
+  function clearPointer() {
+    if (element && pointerId !== null && element.hasPointerCapture?.(pointerId)) {
+      element.releasePointerCapture(pointerId);
+    }
+    pointerId = null;
+  }
+
+  function resetVisual(immediate = false) {
+    if (!element) return;
+    element.style.transition = immediate
+      ? "none"
+      : `transform ${config.return_duration}ms cubic-bezier(.2,.9,.25,1.25), opacity 160ms ease`;
+    element.style.transform = "";
+    element.style.opacity = "1";
     deltaX = 0;
     deltaY = 0;
-    current.style.transition = "none";
-    
-    window.addEventListener("pointermove", onMove, { passive: false });
-    window.addEventListener("pointerup", onEnd, { passive: false });
-    window.addEventListener("pointercancel", onEnd, { passive: false }); // 保证取消事件也能触发清理
-    window.addEventListener("mousemove", onMove, { passive: false });
-    window.addEventListener("mouseup", onEnd, { passive: false });
+    velocityY = 0;
+    config.onProgress?.({ progress: 0, direction: null, delta_y: 0 });
+    if (!immediate) {
+      setTimeout(() => { if (element && !resolving) element.style.transition = ""; }, config.return_duration);
+    }
+  }
+
+  function resolve(action) {
+    if (!element || !card || resolving) return false;
+    resolving = true;
+    const targetElement = element;
+    const targetCard = card;
+    const viewportTravel = Math.max(window.innerHeight * 0.72, targetElement.clientHeight * 1.35);
+    const exitY = action === "discard" ? -viewportTravel : viewportTravel;
+    const exitX = clamp(deltaX * 0.45, -80, 80);
+    const rotation = clamp(deltaX / 10, -config.max_rotation * 1.5, config.max_rotation * 1.5);
+
+    targetElement.style.pointerEvents = "none";
+    targetElement.style.transition = `transform ${config.exit_duration}ms cubic-bezier(.18,.75,.24,1), opacity ${config.exit_duration}ms ease`;
+    targetElement.style.transform = `translate3d(${exitX}px, ${exitY}px, 0) rotate(${rotation}deg) scale(.94)`;
+    targetElement.style.opacity = "0";
+    config.onProgress?.({ progress: 1, direction: action, delta_y: exitY });
+    config.onCommit?.(action);
+
+    element = null;
+    card = null;
+    clearPointer();
+    setTimeout(() => {
+      resolving = false;
+      if (action === "eat") config.onEat?.(targetCard);
+      else config.onDiscard?.(targetCard);
+    }, config.exit_duration);
+    return true;
+  }
+
+  function decideAction() {
+    const projectedY = deltaY + velocityY * config.projection_ms;
+    const hasVerticalIntent = Math.abs(deltaY) >= Math.abs(deltaX) * 0.55;
+    const distanceCommit = Math.abs(projectedY) >= threshold;
+    const flickCommit = Math.abs(deltaY) >= config.min_flick_distance && Math.abs(velocityY) >= config.flick_velocity;
+    if (!hasVerticalIntent || (!distanceCommit && !flickCommit)) return null;
+    return projectedY < 0 ? "discard" : "eat";
+  }
+
+  function onPointerDown(event) {
+    if (!element || resolving || pointerId !== null || (event.button !== undefined && event.button !== 0)) return;
+    event.preventDefault();
+    pointerId = event.pointerId;
+    startX = event.clientX;
+    startY = event.clientY;
+    lastY = event.clientY;
+    lastTime = event.timeStamp;
+    deltaX = 0;
+    deltaY = 0;
+    velocityY = 0;
+    threshold = clamp(element.clientHeight * config.threshold_ratio, config.min_threshold, config.max_threshold);
+    element.style.transition = "none";
+    element.setPointerCapture?.(pointerId);
+  }
+
+  function onPointerMove(event) {
+    if (!element || event.pointerId !== pointerId) return;
+    event.preventDefault();
+    const timeDelta = Math.max(1, event.timeStamp - lastTime);
+    const instantVelocity = (event.clientY - lastY) / timeDelta;
+    velocityY = velocityY * 0.68 + instantVelocity * 0.32;
+    deltaX = event.clientX - startX;
+    deltaY = event.clientY - startY;
+    lastY = event.clientY;
+    lastTime = event.timeStamp;
+    requestPaint();
+  }
+
+  function onPointerEnd(event) {
+    if (event.pointerId !== pointerId) return;
+    event.preventDefault();
+    cancelAnimationFrame(frame);
+    const action = event.type === "pointercancel" ? null : decideAction();
+    clearPointer();
+    if (action) resolve(action);
+    else resetVisual();
+  }
+
+  function detach() {
+    if (!element) return;
+    element.removeEventListener("pointerdown", onPointerDown);
+    element.removeEventListener("pointermove", onPointerMove);
+    element.removeEventListener("pointerup", onPointerEnd);
+    element.removeEventListener("pointercancel", onPointerEnd);
   }
 
   return {
-    bind(element, card) {
-      if (current) {
-        current.removeEventListener("pointerdown", onStart);
-        current.removeEventListener("mousedown", onStart);
-      }
-      current = element;
-      cardMeta = card;
-      if (current) {
-        current.style.touchAction = "none";
-        current.addEventListener("pointerdown", onStart, { passive: false });
-        current.addEventListener("mousedown", onStart, { passive: false });
-      }
+    bind(nextElement, nextCard) {
+      detach();
+      element = nextElement;
+      card = nextCard;
+      resolving = false;
+      pointerId = null;
+      if (!element) return;
+      resetVisual(true);
+      element.style.touchAction = "none";
+      element.addEventListener("pointerdown", onPointerDown, { passive: false });
+      element.addEventListener("pointermove", onPointerMove, { passive: false });
+      element.addEventListener("pointerup", onPointerEnd, { passive: false });
+      element.addEventListener("pointercancel", onPointerEnd, { passive: false });
+    },
+    commit(action) {
+      if (action !== "eat" && action !== "discard") return false;
+      deltaY = action === "eat" ? threshold : -threshold;
+      return resolve(action);
+    },
+    cancel() {
+      clearPointer();
+      resetVisual();
+    },
+    destroy() {
+      detach();
+      clearPointer();
+      element = null;
+      card = null;
+      cancelAnimationFrame(frame);
     },
   };
 }

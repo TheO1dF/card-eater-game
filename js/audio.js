@@ -47,6 +47,20 @@ export function playSound(type, streak) {
     osc.start(now);
     osc.stop(now + 0.2);
   } 
+  else if (type === 'effect') {
+    // 效果触发叠一层短促高音，让“启动 → 收割”在听觉上也有确认感。
+    osc.type = 'square';
+    const baseFreq = 660 * Math.pow(1.035, Math.min(streak, 8) - 1);
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.32, now + 0.12);
+
+    gainNode.gain.setValueAtTime(0, now);
+    gainNode.gain.linearRampToValueAtTime(0.1, now + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+    osc.start(now);
+    osc.stop(now + 0.16);
+  }
   else if (type === 'error' || type === 'damage') {
     // 吃到负分牌的音效：刺耳的锯齿波
     osc.type = 'sawtooth';
@@ -62,7 +76,6 @@ export function playSound(type, streak) {
   }
 }
 
-// --- BGM 引擎 (Minecraft C418 Style) ---
 // --- BGM 引擎 (幸运房东 动感肉鸽风) ---
 let isBGMPlaying = false;
 let bgmTimer;
@@ -149,4 +162,11 @@ export function toggleBGM(play) {
       masterBgmGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
     }
   }
+}
+
+export function getAudioStatus() {
+  return {
+    context_state: audioCtx?.state ?? "uninitialized",
+    bgm_playing: isBGMPlaying,
+  };
 }

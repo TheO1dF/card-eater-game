@@ -2,92 +2,121 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CardEater</title>
-    <link rel="stylesheet" href="./styles.css?v=2" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#120f1c" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>吃牌肉鸽 · CardEater</title>
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css?v=5" />
   </head>
   <body>
-    <main class="app">
-      <section class="table">
-        <div class="hud">
-          <div class="hud-panel"><div class="hud-label">轮次 / 阶段目标</div><div class="hud-value" id="roundValue">1 / 15</div></div>
-          <div class="hud-panel"><div class="hud-label">耗时</div><div class="hud-value" id="timerValue" style="color:var(--accent-discard); font-variant-numeric: tabular-nums;">0.0s</div></div>
-          <div class="hud-panel"><div class="hud-label">剩余牌</div><div class="hud-value" id="remainingValue">10</div></div>
-          <div class="hud-panel"><div class="hud-label">总分</div><div class="hud-value" id="scoreValue">0</div></div>
-          <div class="hud-panel"><div class="hud-label">金币</div><div class="hud-value" id="goldValue">0</div></div>
-        </div>
+    <main class="app" id="app">
+      <section class="game-shell" aria-label="吃牌肉鸽游戏桌">
+        <header class="topbar">
+          <div class="brand" aria-label="CardEater">
+            <span class="brand-mark" aria-hidden="true">CE</span>
+            <span><b>吃牌肉鸽</b><small>CARD EATER</small></span>
+          </div>
+          <div class="topbar-actions">
+            <span class="phase-chip" id="phaseValue">准备中</span>
+            <button class="icon-button" id="soundButton" type="button" aria-label="切换声音" aria-pressed="true">♪</button>
+          </div>
+        </header>
 
-        <div class="scene">
+        <section class="hud" aria-label="本局数据">
+          <div class="hud-cell"><span>轮次</span><strong id="roundValue">1/15</strong></div>
+          <div class="hud-cell"><span>总分</span><strong id="scoreValue">0</strong></div>
+          <div class="hud-cell"><span>金币</span><strong id="goldValue">0</strong></div>
+          <div class="hud-cell"><span>剩余</span><strong id="remainingValue">7</strong></div>
+          <div class="hud-cell timer-cell"><span>计时</span><strong id="timerValue">0.0s</strong></div>
+        </section>
+
+        <section class="playfield">
+          <div class="action-zone discard-zone" id="discardZone" aria-hidden="true">
+            <span class="zone-arrow">↑</span><b>弃 牌</b><small>DISCARD</small>
+          </div>
+
           <div class="deck-stage">
+            <div class="pixel-spark spark-a"></div>
+            <div class="pixel-spark spark-b"></div>
             <div class="stack-shadow"></div>
-            <div class="card-stack" id="cardStack"></div>
-            <div class="card-feedback">
-              <div class="feedback-pill eat" id="eatHint">向下滑动：吃掉</div>
-              <div class="feedback-pill discard" id="discardHint">向上滑动：丢弃</div>
-            </div>
-            <div class="hint">拖拽卡牌；向上或向下滑动触发动作</div>
+            <div class="card-stack" id="cardStack" aria-live="polite"></div>
+            <div class="deck-empty" id="deckEmpty" hidden>牌堆清空</div>
+            <div class="swipe-status" id="swipeStatus" aria-hidden="true"></div>
           </div>
-        </div>
 
-        <!-- 3,2,1 倒计时遮罩 -->
-        <div class="overlay" id="countdownOverlay" style="z-index: 50; background: rgba(0,0,0,0.8);">
-          <div id="countdownText" style="font-size: 120px; font-weight: 900; color: #4ade80; text-shadow: 0 0 30px rgba(74,222,128,0.8); transition: transform 0.2s;">开始 !</div>
-        </div>
+          <div class="action-zone eat-zone" id="eatZone" aria-hidden="true">
+            <span class="zone-arrow">↓</span><b>吃 牌</b><small>EAT</small>
+          </div>
+        </section>
 
-        <!-- 规则三选一 (加入下个目标提示) -->
-        <div class="overlay" id="ruleDraft">
-          <div class="overlay-panel">
-            <h2 class="overlay-title" id="ruleDraftTitle">选择一条规则</h2>
-            <div class="overlay-tip" id="ruleDraftTip">
-              从随机三选一中挑选一条，本轮生效。<br>
-              <strong id="draftTargetText" style="display:inline-block; margin-top:8px; color:var(--accent-discard); background: rgba(249,115,22,0.1); padding: 4px 12px; border-radius: 8px;">🎯 下个目标：第 5 轮达到 100 分</strong>
+        <footer class="controls">
+          <button class="action-button discard-button" id="discardButton" type="button"><kbd>↑</kbd><span>弃掉</span></button>
+          <p>拖动卡牌或快速轻扫<br /><span>上弃 · 下吃</span></p>
+          <button class="action-button eat-button" id="eatButton" type="button"><kbd>↓</kbd><span>吃掉</span></button>
+        </footer>
+
+        <div class="overlay welcome-overlay show" id="welcomeOverlay" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+          <section class="welcome-panel">
+            <div class="welcome-logo" aria-hidden="true"><span>CE</span></div>
+            <div class="eyebrow">EAT SMART · DISCARD FAST</div>
+            <h1 id="welcomeTitle">吃牌肉鸽</h1>
+            <p>先学会吃与弃，再构筑会爆炸的连锁。<br />每轮永久叠加一条规则，在 15 轮内突破目标。</p>
+            <div class="welcome-legend">
+              <span class="legend-edible">↓ 可食用 · 通常吃牌得分</span>
+              <span class="legend-inedible">↑ 不可食用 · 通常弃牌得分</span>
             </div>
+            <div class="best-score">本机最佳 <strong id="welcomeBestScore">--</strong></div>
+            <button class="primary-button start-button" id="startGameButton" type="button">开始游戏 · 播放音乐</button>
+            <small>浏览器需要点击一次，才能启用背景音乐与音效</small>
+          </section>
+        </div>
+
+        <div class="overlay countdown-overlay" id="countdownOverlay" role="status" aria-live="assertive">
+          <div class="countdown-pixel" id="countdownText">3</div>
+        </div>
+
+        <div class="overlay" id="ruleDraft" role="dialog" aria-modal="true" aria-labelledby="ruleDraftTitle">
+          <section class="modal-panel draft-panel">
+            <div class="eyebrow">ROUND <span id="draftRoundValue">01</span> · RULE PICK</div>
+            <h1 id="ruleDraftTitle">选择一条规则</h1>
+            <p class="modal-lead">选择一条永久加入本局且不会重复的规则；规则会持续叠加，构筑越打越爽。</p>
+            <div class="target-banner"><span>下一阶段目标</span><strong id="draftTargetText">第 5 轮 · 150 分</strong></div>
             <div class="option-grid" id="ruleDraftList"></div>
-          </div>
+          </section>
         </div>
 
-        <!-- 商店 (保持原样) -->
-        <div class="overlay" id="shopPanel">
-          <div class="overlay-panel">
-            <h2 class="overlay-title">商店</h2>
-            <div class="overlay-tip" id="shopMessage">购买卡牌增强卡组，或精简卡牌。</div>
-            <div class="hud hud-inline">
-              <div class="hud-panel"><div class="hud-label">金币</div><div class="hud-value" id="shopGold">0</div></div>
-              <div class="hud-panel"><div class="hud-label">删牌费用</div><div class="hud-value" id="shopDeleteCost">0</div></div>
-            </div>
-            <div class="option-grid" id="shopList"></div>
-            <div class="shop-actions" style="margin-top: 24px; justify-content: center;">
-              <button class="shop-action" id="shopContinue" type="button" style="background: var(--accent-eat); color: #fff; font-weight: bold;">结束商店，进入下一轮</button>
-            </div>
-          </div>
+        <div class="overlay" id="roundSummary" role="dialog" aria-modal="true" aria-labelledby="summaryTitle">
+          <section class="modal-panel summary-panel">
+            <div class="eyebrow" id="summaryEyebrow">ROUND CLEAR</div>
+            <h1 id="summaryTitle">本轮结算</h1>
+            <p class="modal-lead" id="summaryTip">每条得分只计算一次，规则倍率在最后结算。</p>
+            <div class="receipt" id="summaryBreakdownList"></div>
+            <div class="rule-result-list" id="summaryRuleResults"></div>
+            <details class="active-rules">
+              <summary>查看本局永久规则</summary>
+              <ul id="activeRulesList"></ul>
+            </details>
+            <button class="primary-button" id="summaryContinueBtn" type="button">进入商店</button>
+          </section>
         </div>
 
-        <!-- 全新：账单式结算界面 -->
-        <div class="overlay" id="roundSummary">
-          <div class="overlay-panel">
-            <h2 class="overlay-title" id="summaryTitle">本轮结算</h2>
-            <div class="overlay-tip" id="summaryTip">分步结算详情</div>
-            
-            <!-- 账单列表容器：方便以后做逐行弹出的动画 -->
-            <div id="summaryBreakdownList" style="display: flex; flex-direction: column; gap: 12px; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
-              <!-- JS 动态注入账单条目 -->
+        <div class="overlay" id="shopPanel" role="dialog" aria-modal="true" aria-labelledby="shopTitle">
+          <section class="modal-panel shop-panel-inner">
+            <div class="shop-heading">
+              <div><div class="eyebrow">BETWEEN ROUNDS</div><h1 id="shopTitle">夜市商店</h1></div>
+              <div class="shop-wallet"><span>金币</span><strong id="shopGold">0</strong></div>
             </div>
-            
-            <!-- 隐藏的已选规则容器 -->
-            <div id="activeRulesContainer" style="grid-column: 1 / -1; margin-bottom: 10px; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 12px; display: none;">
-              <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">本局已叠加的所有规则：</div>
-              <ul id="activeRulesList" style="margin:0; padding-left: 18px; font-size: 13px; color: var(--text); line-height: 1.6;"></ul>
-            </div>
-
-            <div class="shop-actions" style="margin-top: 12px; flex-direction: column; gap: 10px;">
-              <button class="shop-action" id="viewRulesBtn" type="button" style="background: transparent; border: 1px solid var(--muted); color: var(--text);">👀 查看当前已选规则</button>
-              <button class="shop-action" id="summaryContinueBtn" type="button" style="background: var(--accent-eat); color: #fff; font-weight: bold;">确认结算，进入商店</button>
-            </div>
-          </div>
+            <p class="modal-lead" id="shopMessage">购买卡牌增强构筑，或花费金币精简牌组。</p>
+            <div class="shop-section-title"><span>本轮商品</span><small>点击购买</small></div>
+            <div class="shop-grid" id="shopOfferList"></div>
+            <div class="shop-section-title"><span>我的牌组</span><small>删牌费用 <b id="shopDeleteCost">0</b></small></div>
+            <div class="deck-manager" id="shopDeckList"></div>
+            <button class="primary-button" id="shopContinue" type="button">结束商店 · 下一轮</button>
+          </section>
         </div>
       </section>
     </main>
-
     <script type="module" src="./js/main.js"></script>
   </body>
 </html>

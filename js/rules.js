@@ -1,23 +1,106 @@
-export const RULE_LIBRARY = Object.freeze([
-  { id: "combo-fruit-3", name: "水果连击", description: "本轮连吃3张水果，总分 x1.5", scope: "sequence_eat", targetType: "水果", count: 3, multiplier: 1.5 },
-  { id: "combo-fastfood-2", name: "暴食者", description: "本轮连吃2张快餐，总分 x1.5", scope: "sequence_eat", targetType: "快餐", count: 2, multiplier: 1.5 },
-  { id: "speed-clear-8", name: "风驰电掣", description: "8秒内滑完本轮牌组，总分 x2.0", scope: "time_limit", timeLimitMs: 8000, multiplier: 2.0 },
-  { id: "healthy-diet", name: "健康饮食", description: "本轮不吃任何快餐牌，总分 x1.5", scope: "no_eat_type", targetType: "快餐", multiplier: 1.5 },
-  { id: "discard-master", name: "断舍离大师", description: "本轮丢弃至少 4 张牌，总分 x1.5", scope: "min_discard", count: 4, multiplier: 1.5 },
-  { id: "fruit-base-up", name: "果园丰收", description: "所有水果牌吃牌基础分 +1", scope: "flat_bonus", targetType: "水果", bonus: 1, multiplier: 1},
-  { id: "exact-eat-5", name: "精准节食", description: "本轮【精确】只吃 5 张牌（多一张少一张都不行），总分 x2.5", scope: "exact_eat_count", count: 5, multiplier: 2.5 },
-  { id: "equal-balance", name: "太极阴阳", description: "本轮吃掉的牌数与弃掉的牌数【完全相等】，总分 x3.0", scope: "equal_eat_discard", multiplier: 3.0 },
-  { id: "deck-minimalism", name: "极简主义", description: "如果你的永久卡组总数 ≤ 5 张，总分 x2.0", scope: "max_deck_size", count: 5, multiplier: 2.0 },
-  { id: "discard-master", name: "断舍离宗师", description: "本轮丢弃至少 8 张牌，总分 x2.0", scope: "min_discard", count: 8, multiplier: 2.0 },
+const EDIBLE = "edible";
+const INEDIBLE = "inedible";
+
+const CATEGORY_RULE_CONFIG = Object.freeze([
+  { key: "fruit", type: "水果", action: "eat", verb: "吃", count: 3, multiplier: 1.35 },
+  { key: "fastfood", type: "快餐", action: "eat", verb: "吃", count: 2, multiplier: 1.45 },
+  { key: "dessert", type: "甜点", action: "eat", verb: "吃", count: 2, multiplier: 1.45 },
+  { key: "drink", type: "饮料", action: "eat", verb: "吃", count: 2, multiplier: 1.5 },
+  { key: "vegetable", type: "蔬菜", action: "eat", verb: "吃", count: 2, multiplier: 1.45 },
+  { key: "celestial", type: "星体", action: "discard", verb: "弃", count: 2, multiplier: 1.4 },
+  { key: "person", type: "人物", action: "discard", verb: "弃", count: 2, multiplier: 1.5 },
+  { key: "animal", type: "动物", action: "discard", verb: "弃", count: 2, multiplier: 1.45 },
+  { key: "utility", type: "通用", action: "discard", verb: "弃", count: 2, multiplier: 1.55 },
 ]);
 
-// 抽取时不重复抽取玩家已经拥有的规则
-export function randomDraftRules(count = 3, activeRules =[]) {
-  const activeIds = activeRules.map(r => r.id);
-  const pool = RULE_LIBRARY.filter(r => !activeIds.includes(r.id));
-  const picked =[];
+const CATEGORY_RULES = CATEGORY_RULE_CONFIG.flatMap((category) => [
+  {
+    id: `${category.key}-craft`,
+    name: `${category.type}专精`,
+    description: `每张${category.type}牌${category.verb}分 +1`,
+    scope: "flat_bonus",
+    target_type: category.type,
+    action: category.action,
+    bonus: 1,
+    multiplier: 1,
+  },
+  {
+    id: `${category.key}-rhythm`,
+    name: `${category.type}节拍`,
+    description: `连续${category.verb} ${category.count} 张${category.type}牌：本轮 ×${category.multiplier}`,
+    scope: category.action === "eat" ? "sequence_eat" : "sequence_discard",
+    target_type: category.type,
+    count: category.count,
+    multiplier: category.multiplier,
+  },
+]);
+
+// 每轮选择一条并永久加入本局；抽取时会排除所有已拥有规则。
+export const RULE_LIBRARY = Object.freeze([
+  ...CATEGORY_RULES,
+  { id: "food-score-up", name: "加量不加价", description: "所有可食用牌吃分 +1", scope: "flat_bonus", target_edibility: EDIBLE, action: "eat", bonus: 1, multiplier: 1 },
+  { id: "discard-score-up", name: "回收补贴", description: "所有不可食用牌弃分 +1", scope: "flat_bonus", target_edibility: INEDIBLE, action: "discard", bonus: 1, multiplier: 1 },
+  { id: "clean-plate", name: "完美分类", description: "食物都吃、非食物都弃：本轮 ×1.45", scope: "perfect_sort", multiplier: 1.45 },
+  { id: "no-negative", name: "无伤清台", description: "没有任何负分动作：本轮 ×1.45", scope: "no_negative_action", multiplier: 1.45 },
+  { id: "speed-clear-12", name: "十二秒热身", description: "12 秒内清空牌组：本轮 ×1.35", scope: "time_limit", time_limit_ms: 12000, multiplier: 1.35 },
+  { id: "speed-clear-8", name: "八秒狂飙", description: "8 秒内清空牌组：本轮 ×1.7", scope: "time_limit", time_limit_ms: 8000, multiplier: 1.7, min_round: 3 },
+  { id: "balanced-actions", name: "营养均衡", description: "吃与弃数量相差不超过 1：本轮 ×1.4", scope: "balanced_actions", multiplier: 1.4 },
+  { id: "exact-eat-4", name: "四分饱", description: "恰好吃 4 张牌：本轮 ×1.5", scope: "exact_eat_count", count: 4, multiplier: 1.5 },
+  { id: "eat-all-food", name: "绝不浪费", description: "不弃任何可食用牌：本轮 ×1.4", scope: "no_discard_edibility", target_edibility: EDIBLE, multiplier: 1.4 },
+  { id: "eat-no-junk", name: "铁胃守则", description: "不吃任何不可食用牌：本轮 ×1.4", scope: "no_eat_edibility", target_edibility: INEDIBLE, multiplier: 1.4 },
+  { id: "discard-3", name: "顺手整理", description: "至少弃 3 张牌：本轮 ×1.25", scope: "min_discard", count: 3, multiplier: 1.25 },
+  { id: "discard-5", name: "断舍离", description: "至少弃 5 张牌：本轮 ×1.6", scope: "min_discard", count: 5, multiplier: 1.6, min_round: 3 },
+  { id: "eat-4", name: "开胃时刻", description: "至少吃 4 张牌：本轮 ×1.25", scope: "min_eat", count: 4, multiplier: 1.25 },
+  { id: "eat-6", name: "饕餮盛宴", description: "至少吃 6 张牌：本轮 ×1.6", scope: "min_eat", count: 6, multiplier: 1.6, min_round: 3 },
+  { id: "sacrifice-1", name: "苦尽甘来", description: "主动吃下至少 1 张负分牌：本轮 ×1.5", scope: "min_negative_eat", count: 1, multiplier: 1.5 },
+  { id: "sacrifice-2", name: "以痛换力", description: "主动吃下至少 2 张负分牌：本轮 ×2.4", scope: "min_negative_eat", count: 2, multiplier: 2.4, min_round: 4 },
+  { id: "sacrifice-payoff-8", name: "先苦后甜", description: "负分吃牌后打出单张 8+ 分：本轮 ×1.8", scope: "sacrifice_then_score", score: 8, multiplier: 1.8, min_round: 3 },
+  { id: "sacrifice-payoff-15", name: "绝境爆发", description: "负分吃牌后打出单张 15+ 分：本轮 ×2.5", scope: "sacrifice_then_score", score: 15, multiplier: 2.5, min_round: 6 },
+  { id: "unique-eat-3", name: "环球菜单", description: "吃牌包含至少 3 种类别：本轮 ×1.5", scope: "unique_eat_types", count: 3, multiplier: 1.5 },
+  { id: "unique-discard-3", name: "垃圾分类大师", description: "弃牌包含至少 3 种类别：本轮 ×1.5", scope: "unique_discard_types", count: 3, multiplier: 1.5 },
+  { id: "tiny-deck-8", name: "袖珍牌组", description: "牌组不超过 8 张：本轮 ×1.65", scope: "max_deck_size", count: 8, multiplier: 1.65 },
+  { id: "lean-deck-10", name: "精简主义", description: "牌组不超过 10 张：本轮 ×1.35", scope: "max_deck_size", count: 10, multiplier: 1.35 },
+  { id: "big-deck-12", name: "百纳食袋", description: "牌组达到 12 张：本轮 ×1.4", scope: "min_deck_size", count: 12, multiplier: 1.4, min_round: 4 },
+  { id: "big-deck-16", name: "无底胃袋", description: "牌组达到 16 张：本轮 ×1.8", scope: "min_deck_size", count: 16, multiplier: 1.8, min_round: 8 },
+  { id: "raw-score-30", name: "火力达标", description: "倍率前牌面与效果达到 30 分：本轮 ×1.3", scope: "round_card_score", score: 30, multiplier: 1.3, min_round: 3 },
+  { id: "raw-score-70", name: "火力全开", description: "倍率前牌面与效果达到 70 分：本轮 ×1.7", scope: "round_card_score", score: 70, multiplier: 1.7, min_round: 7 },
+  { id: "alternating-4", name: "吃弃四拍", description: "连续 4 次交替吃与弃：本轮 ×1.45", scope: "alternating_actions", count: 4, multiplier: 1.45 },
+  { id: "alternating-6", name: "完美律动", description: "连续 6 次交替吃与弃：本轮 ×2", scope: "alternating_actions", count: 6, multiplier: 2, min_round: 3 },
+  { id: "eat-streak-5", name: "五口连吞", description: "连续吃 5 张牌：本轮 ×1.45", scope: "action_streak", action: "eat", count: 5, multiplier: 1.45, min_round: 3 },
+  { id: "discard-streak-5", name: "五连清扫", description: "连续弃 5 张牌：本轮 ×1.55", scope: "action_streak", action: "discard", count: 5, multiplier: 1.55, min_round: 3 },
+]);
+
+function matchesCard(rule, card) {
+  const typeMatches = !rule.target_type || card.type === rule.target_type;
+  const edibilityMatches = !rule.target_edibility || card.edibility === rule.target_edibility;
+  return typeMatches && edibilityMatches;
+}
+
+export function isRuleEligible(rule, deck = [], currentRound = 1) {
+  if (!rule) return false;
+  if ((rule.min_round ?? 1) > currentRound) return false;
+  if (deck.length === 0) return true;
+  const matchingCount = deck.filter((card) => matchesCard(rule, card)).length;
+
+  if (rule.target_type && matchingCount === 0) return false;
+  if (["sequence_eat", "sequence_discard", "min_eat_target", "min_discard_target"].includes(rule.scope)) {
+    return matchingCount >= rule.count;
+  }
+  if (["exact_eat_count", "min_eat", "min_discard", "action_streak", "alternating_actions"].includes(rule.scope)) {
+    return deck.length >= rule.count;
+  }
+  if (["unique_eat_types", "unique_discard_types"].includes(rule.scope)) {
+    return new Set(deck.map((card) => card.type)).size >= rule.count;
+  }
+  return true;
+}
+
+export function randomDraftRules(count = 3, excludedRules = [], random = Math.random, deck = [], currentRound = 1) {
+  const excludedIds = new Set(excludedRules.map((rule) => rule.id));
+  const pool = RULE_LIBRARY.filter((rule) => !excludedIds.has(rule.id) && isRuleEligible(rule, deck, currentRound));
+  const picked = [];
   while (picked.length < count && pool.length > 0) {
-    picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    picked.push(pool.splice(Math.floor(random() * pool.length), 1)[0]);
   }
   return picked;
 }

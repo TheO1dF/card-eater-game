@@ -1,353 +1,268 @@
-const fmt = (val) => val > 0 ? `+${val}` : val;
+import { GAME_CONFIG, getNextMilestone } from "./config.js";
 
-// 主界面卡牌
-function createCardElement(card, isActive = false) {
-  const el = document.createElement("article");
-  el.className = `card${isActive ? " is-active" : ""}`;
-  el.dataset.cardId = card.id;
-  el.innerHTML = `
-    <div class="card-ambient"></div>
-    <div class="card-topline">
-      <span class="card-badge">${card.type}</span>
-      <span class="card-badge">${card.id.toUpperCase()}</span>
-    </div>
-    <div><div class="card-name">${card.name}</div></div>
-    <div class="card-meta">
-      <span>进食 ${fmt(card.eat_points)}</span>
-      <span>丢弃 ${fmt(card.discard_points)}</span>
-    </div>
-    <div class="card-stamp">${card.effect ? card.effect.description : "基础牌"}</div>
-  `;
-  return el;
+const PHASE_LABELS = Object.freeze({
+  Init: "准备中", RuleDraft: "规则选择", Playing: "出牌中", Scoring: "结算中",
+  Shop: "商店", NextRound: "下一轮", GameOver: "本局结束",
+});
+
+const RARITY_CLASS = Object.freeze({ "普通": "common", "罕见": "uncommon", "稀有": "rare", "传奇": "legendary" });
+const EDIBILITY_LABEL = Object.freeze({ edible: "可食用", inedible: "不可食用" });
+const ROLE_LABEL = Object.freeze({ baseline: "基础", setup: "启动", payoff: "收割", sacrifice: "牺牲", engine: "成长引擎", economy: "经济" });
+const signed = (value) => value > 0 ? `+${value}` : String(value);
+
+function spriteStyle(card) {
+  const columns = Math.max(1, Number(card.sprite_columns ?? 5));
+  const rows = Math.max(1, Number(card.sprite_rows ?? 4));
+  const spriteX = Number(card.sprite_x ?? 0);
+  const spriteY = Number(card.sprite_y ?? 0);
+  // Generated sheets are 3:2 canvases containing a 5x2 grid. Render them with
+  // their original aspect ratio and a little breathing room instead of
+  // stretching every grid cell into a square.
+  const generatedSheet = columns === 5 && rows === 2;
+  const x = generatedSheet
+    ? ((0.9 * spriteX - 0.05) / 3.5) * 100
+    : spriteX * (columns === 1 ? 0 : 100 / (columns - 1));
+  const y = generatedSheet
+    ? (spriteY === 0 ? 12.5 : 87.5)
+    : spriteY * (rows === 1 ? 0 : 100 / (rows - 1));
+  const backgroundWidth = generatedSheet ? "450%" : `${columns * 100}%`;
+  const backgroundHeight = generatedSheet ? "auto" : `${rows * 100}%`;
+  const hue = Number(card.sprite_hue ?? 0);
+  const scale = Number(card.sprite_scale ?? 1);
+  const sheet = card.sprite_sheet ?? "card-sprites.png";
+  return `--sprite-image:url('./assets/${sheet}?v=2');--sprite-x:${x}%;--sprite-y:${y}%;--sprite-size-x:${backgroundWidth};--sprite-size-y:${backgroundHeight};--sprite-hue:${hue}deg;--sprite-scale:${scale};`;
 }
 
-// 商店售卖区卡牌 (展示详情和价格)
-function createShopCardElement(card, onBuy) {
+function setText(node, value) {
+  if (node) node.textContent = String(value);
+}
+
+function cardElement(card, active, depth) {
+  const article = document.createElement("article");
+  article.className = `game-card card-${card.edibility} rarity-${RARITY_CLASS[card.rarity] ?? "common"}${active ? " is-active" : ""}`;
+  article.style.setProperty("--depth", depth);
+  article.style.zIndex = String(10 - depth);
+  article.dataset.cardUuid = card.uuid;
+  article.setAttribute("aria-label", `${card.name}，吃牌 ${card.eat_points} 分，弃牌 ${card.discard_points} 分`);
+  article.innerHTML = `
+    <div class="card-noise" aria-hidden="true"></div>
+    <div class="card-head"><span class="rarity-tag">${card.rarity}</span><span class="edibility-tag">${EDIBILITY_LABEL[card.edibility] ?? "特殊"}</span><span class="card-code">${card.id}</span></div>
+    <div class="card-art" aria-hidden="true"><span class="game-sprite" style="${spriteStyle(card)}"></span></div>
+    <div class="card-title"><small>${EDIBILITY_LABEL[card.edibility] ?? "特殊"} · ${card.type} · ${ROLE_LABEL[card.role] ?? "特殊"}</small><strong>${card.name}</strong></div>
+    <div class="card-scores"><span class="discard-score"><i>↑</i>弃 ${signed(card.discard_points)}</span><span class="eat-score"><i>↓</i>吃 ${signed(card.eat_points)}</span></div>
+    <div class="card-effect">${card.effect?.description ?? "没有额外效果"}</div>
+  `;
+  return article;
+}
+
+function ruleElement(rule, onChoose) {
   const button = document.createElement("button");
-  button.className = "shop-card";
+  button.className = "rule-card";
   button.type = "button";
-  const effectText = card.effect ? card.effect.description : "基础牌/无特殊效果";
   button.innerHTML = `
-    <div class="shop-card-name">${card.name} <span style="font-size:12px;color:var(--muted);">${card.type}</span></div>
-    <div class="shop-card-meta">吃 ${fmt(card.eat_points)} / 弃 ${fmt(card.discard_points)}</div>
-    <div style="font-size:12px; margin-top:8px; color:#a78bfa; line-height:1.4;">✨ ${effectText}</div>
-    <div class="shop-card-price" style="margin-top:8px; font-weight:bold; color:var(--color-gold);">🪙 购买价格: ${card.shopPrice}</div>
+    <span class="rule-icon">✦</span>
+    <span class="rule-copy"><small>永久规则 · 本局不重复</small><strong>${rule.name}</strong><em>${rule.description}</em></span>
+    <span class="rule-multiplier">${rule.multiplier === 1 ? `+${rule.bonus ?? 1}` : `×${rule.multiplier}`}</span>
+  `;
+  button.addEventListener("click", () => onChoose(rule), { once: true });
+  return button;
+}
+
+function shopCardElement(card, onBuy) {
+  const button = document.createElement("button");
+  button.className = `shop-card rarity-${RARITY_CLASS[card.rarity] ?? "common"}`;
+  button.type = "button";
+  button.innerHTML = `
+    <span class="shop-card-icon game-sprite" style="${spriteStyle(card)}"></span>
+    <span class="shop-card-copy"><small>${card.rarity} · ${card.type} · ${ROLE_LABEL[card.role] ?? "特殊"}</small><strong>${card.name}</strong><em>吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</em><i>${card.effect?.description ?? "稳定基础价值"}</i></span>
+    <span class="price-tag">$ ${card.shop_price}</span>
   `;
   button.addEventListener("click", () => onBuy(card));
   return button;
 }
 
-// 玩家卡组展示区卡牌 (展示详情和删除)
-function createDeckCardElement(card, onRemove) {
+function deckChipElement(card, cost, onRemove) {
   const button = document.createElement("button");
-  button.className = "shop-card";
+  button.className = "deck-chip";
   button.type = "button";
-  const effectText = card.effect ? card.effect.description : "基础牌/无特殊效果";
-  button.innerHTML = `
-    <div class="shop-card-name">${card.name} <span style="font-size:12px;color:var(--muted);">${card.type}</span></div>
-    <div class="shop-card-meta">吃 ${fmt(card.eat_points)} / 弃 ${fmt(card.discard_points)}</div>
-    <div style="font-size:12px; margin-top:8px; color:#a78bfa; line-height:1.4;">✨ ${effectText}</div>
-    <div style="color: #f87171; font-weight: bold; margin-top: 8px;">🗑️ 点击精简删除</div>
-  `;
-  // 必须绑定 card.uuid
+  button.title = `${card.name}：点击支付 ${cost} 金币删除`;
+  button.innerHTML = `<span class="game-sprite" style="${spriteStyle(card)}"></span><b>${card.name}</b><small>${EDIBILITY_LABEL[card.edibility]} · 吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</small><i>删除 $${cost}</i>`;
   button.addEventListener("click", () => onRemove(card.uuid));
   return button;
 }
 
-function createRuleDraftElement(rule, onChoose) {
-  const button = document.createElement("button");
-  button.className = "rule-draft-card";
-  button.type = "button";
-  button.innerHTML = `
-    <div class="rule-draft-name">${rule.name}</div>
-    <div class="rule-draft-desc">${rule.description}</div>
-    <div class="rule-draft-meta">倍率 x${rule.multiplier}</div>
-  `;
-  button.addEventListener("click", () => onChoose(rule));
-  return button;
-}
-
 export function createUI(root) {
-  const stack = root.querySelector("#cardStack");
-  const roundValue = root.querySelector("#roundValue");
-  const scoreValue = root.querySelector("#scoreValue");
-  const goldValue = root.querySelector("#goldValue");
-  const remainingValue = root.querySelector("#remainingValue");
-  const eatHint = root.querySelector("#eatHint");
-  const discardHint = root.querySelector("#discardHint");
-  const summary = root.querySelector("#roundSummary");
-  const summaryBase = root.querySelector("#summaryBaseScore");
-  const summaryCombo = root.querySelector("#summaryComboBonus");
-  const summaryTotal = root.querySelector("#summaryRoundScore");
-  const summaryTime = root.querySelector("#summaryTimeBonus");
-  const ruleDraft = root.querySelector("#ruleDraft");
-  const ruleDraftList = root.querySelector("#ruleDraftList");
-  const ruleDraftTitle = root.querySelector("#ruleDraftTitle");
-  const ruleDraftTip = root.querySelector("#ruleDraftTip");
-  const shop = root.querySelector("#shopPanel");
-  const shopList = root.querySelector("#shopList");
-  const shopGold = root.querySelector("#shopGold");
-  const shopDeleteCost = root.querySelector("#shopDeleteCost");
-  const shopRemoveCount = root.querySelector("#shopRemoveCount");
+  const get = (selector) => root.querySelector(selector);
+  const nodes = {
+    stack: get("#cardStack"), empty: get("#deckEmpty"), round: get("#roundValue"), score: get("#scoreValue"),
+    gold: get("#goldValue"), remaining: get("#remainingValue"), timer: get("#timerValue"), phase: get("#phaseValue"),
+    eatZone: get("#eatZone"), discardZone: get("#discardZone"), swipeStatus: get("#swipeStatus"),
+    draft: get("#ruleDraft"), draftList: get("#ruleDraftList"), summary: get("#roundSummary"),
+    shop: get("#shopPanel"), shopOffers: get("#shopOfferList"), shopDeck: get("#shopDeckList"), welcome: get("#welcomeOverlay"),
+  };
 
-  const timerMap = new WeakMap();
+  function renderHud(state) {
+    setText(nodes.round, `${state.current_round}/${GAME_CONFIG.total_rounds}`);
+    setText(nodes.score, state.total_score);
+    setText(nodes.gold, state.gold);
+    setText(nodes.remaining, state.round.draw_pile.length);
+    setText(nodes.phase, PHASE_LABELS[state.phase] ?? state.phase);
+    setText(get("#shopGold"), state.gold);
+    setText(get("#shopDeleteCost"), state.remove_card_cost);
+  }
 
-  function setHintVisible(node, visible) {
-    if (!node) return;
-    node.classList.toggle("show", visible);
+  function setGestureProgress({ progress = 0, direction = null }) {
+    const strength = Math.max(0, Math.min(1, progress));
+    nodes.eatZone?.style.setProperty("--gesture", direction === "eat" ? strength : 0);
+    nodes.discardZone?.style.setProperty("--gesture", direction === "discard" ? strength : 0);
+    nodes.eatZone?.classList.toggle("is-target", direction === "eat" && strength > 0.12);
+    nodes.discardZone?.classList.toggle("is-target", direction === "discard" && strength > 0.12);
+    if (nodes.swipeStatus) {
+      nodes.swipeStatus.className = `swipe-status${direction ? ` ${direction}` : ""}`;
+      nodes.swipeStatus.textContent = strength > 0.12 ? (direction === "eat" ? "松手吃掉" : "松手弃掉") : "";
+      nodes.swipeStatus.style.opacity = String(strength);
+    }
   }
 
   return {
-    renderHud(state, remaining, engineInfo) {
-      if (roundValue && engineInfo) {
-        const nextTarget = engineInfo.getNextTargetInfo(state.current_round);
-        roundValue.innerHTML = `${state.current_round} / 15 <span style="font-size:12px; color:var(--muted); display:block;">(目标: ${nextTarget.target}分)</span>`;
-      }
-      if (scoreValue) scoreValue.textContent = String(state.total_score);
-      if (goldValue) goldValue.textContent = String(state.gold);
-      if (remainingValue) remainingValue.textContent = String(remaining);
-      if (shopGold) shopGold.textContent = String(state.gold);
-      if (shopDeleteCost) shopDeleteCost.textContent = String(state.remove_card_cost);
+    openWelcome(onStart, bestScore = null) {
+      setText(get("#welcomeBestScore"), bestScore ?? "--");
+      const button = get("#startGameButton");
+      button.onclick = () => {
+        nodes.welcome.classList.remove("show");
+        onStart();
+      };
+      nodes.welcome.classList.add("show");
     },
-    renderStack(cards, activeCard, gesture) {
-      if (!stack) return;
-      stack.innerHTML = "";
-      const visibleCards = cards.slice(-3);
-      visibleCards.forEach((card, index) => {
-        const el = createCardElement(card, index === visibleCards.length - 1 && card.id === activeCard?.id);
-        stack.appendChild(el);
+    renderHud,
+    renderTimer(milliseconds) { setText(nodes.timer, `${(milliseconds / 1000).toFixed(1)}s`); },
+    renderStack(cards, gesture) {
+      nodes.stack.replaceChildren();
+      const visible = cards.slice(-3);
+      visible.forEach((card, index) => {
+        const depth = visible.length - 1 - index;
+        nodes.stack.appendChild(cardElement(card, depth === 0, depth));
       });
-      const topCard = stack.querySelector(".card.is-active");
-      if (topCard && activeCard) {
-        gesture.bind(topCard, activeCard);
-      }
+      const activeCard = cards.at(-1);
+      const activeElement = nodes.stack.querySelector(".game-card.is-active");
+      nodes.empty.hidden = Boolean(activeCard);
+      if (activeElement && activeCard) gesture.bind(activeElement, activeCard);
     },
-    flashHint(type) {
-      const node = type === "eat" ? eatHint : discardHint;
-      if (!node) return;
-      setHintVisible(node, true);
-      const previous = timerMap.get(node);
-      if (previous) clearTimeout(previous);
-      const next = setTimeout(() => setHintVisible(node, false), 700);
-      timerMap.set(node, next);
+    setGestureProgress,
+    bindControls({ onEat, onDiscard, onSound }) {
+      get("#eatButton")?.addEventListener("click", onEat);
+      get("#discardButton")?.addEventListener("click", onDiscard);
+      get("#soundButton")?.addEventListener("click", onSound);
+    },
+    setSoundState(enabled) {
+      const button = get("#soundButton");
+      if (!button) return;
+      button.textContent = enabled ? "♪" : "×";
+      button.setAttribute("aria-pressed", String(enabled));
+      button.classList.toggle("is-muted", !enabled);
     },
     showFloatingScore(points, action, streak) {
-      const stage = root.querySelector(".deck-stage");
+      const stage = get(".deck-stage");
       if (!stage) return;
-
       const floater = document.createElement("div");
-      floater.className = "floater";
-      
-      // 颜色判定：吃是绿色，弃是黄色，负分是红色
-      let color = points >= 0 ? (action === "eat" ? "var(--accent-eat)" : "var(--color-gold)") : "#f87171";
-      if (points < 0) color = "#f87171"; 
-      floater.style.color = color;
-      
-      // 文字内容：展示分数，如果是高连击追加 🔥
-      let text = points > 0 ? `+${points}` : `${points}`;
-      if (streak >= 3) text += ` 🔥x${streak}`; 
-      floater.textContent = text;
-      
-      // 随着连击数变大，文字物理放大 (最大放大 2.5 倍)
-      const scale = Math.min(1 + (streak - 1) * 0.25, 2.5);
-      floater.style.setProperty("--target-scale", scale);
-      
+      floater.className = `score-floater ${points < 0 ? "negative" : action}`;
+      floater.style.setProperty("--score-scale", Math.min(1 + Math.max(0, streak - 1) * 0.12, 1.7));
+      const comboLabel = streak >= 8 ? "OVERDRIVE" : streak >= 5 ? "FEVER" : streak >= 3 ? "HIT" : "";
+      floater.textContent = `${signed(points)}${comboLabel ? ` · ${streak} ${comboLabel}` : ""}`;
       stage.appendChild(floater);
-      
-      // 动画结束后自我销毁
-      setTimeout(() => floater.remove(), 800);
+      floater.addEventListener("animationend", () => floater.remove(), { once: true });
     },
-
-    // 【新增】屏幕震动
+    showEffectFlash(message) {
+      const stage = get(".deck-stage");
+      if (!stage) return;
+      const flash = document.createElement("div");
+      flash.className = "effect-flash";
+      flash.textContent = `✦ ${message}`;
+      stage.appendChild(flash);
+      flash.addEventListener("animationend", () => flash.remove(), { once: true });
+    },
     triggerShake() {
-      const table = root.querySelector(".table");
-      if (!table) return;
-      table.classList.remove("shake");
-      void table.offsetWidth; // 触发浏览器重绘重置动画
-      table.classList.add("shake");
+      const shell = get(".game-shell");
+      shell?.classList.remove("shake");
+      void shell?.offsetWidth;
+      shell?.classList.add("shake");
     },
-    showRoundSummary(result, state, isGameOver, onConfirm) {
-      if (summaryBase) summaryBase.textContent = String(result.baseScore);
-      if (summaryCombo) summaryCombo.textContent = `x${result.comboMultiplier} ${result.comboLogs.length > 0 ? '('+result.comboLogs.join(', ')+')' : ''}`;
-      if (summaryTotal) summaryTotal.textContent = String(result.roundScore);
-      
-      const timeElapsedText = root.querySelector("#summaryTimeElapsed");
-      if (timeElapsedText) timeElapsedText.textContent = `${(state.roundElapsedMs / 1000).toFixed(1)} 秒`;
-      
-      const btn = root.querySelector("#summaryContinueBtn");
-      const title = root.querySelector("#summaryTitle");
-      const tip = root.querySelector("#summaryTip");
-
-      if (isGameOver) {
-        title.textContent = "游戏结束"; title.style.color = "#f87171";
-        tip.textContent = "未达到阶段目标分数，挑战失败！";
-        btn.textContent = "重新开始游戏"; btn.style.background = "#f87171";
-        btn.onclick = () => location.reload();
-      } else {
-        title.textContent = "本轮结算"; title.style.color = "#e5e7eb";
-        btn.textContent = "确认结算，进入商店"; btn.style.background = "var(--accent-eat)";
-        btn.onclick = onConfirm;
-      }
-      
-      // 【查看规则按钮逻辑】
-      const rulesBtn = root.querySelector("#viewRulesBtn");
-      const rulesContainer = root.querySelector("#activeRulesContainer");
-      const rulesList = root.querySelector("#activeRulesList");
-      if (rulesBtn && rulesContainer && rulesList) {
-        rulesContainer.style.display = "none";
-        rulesList.innerHTML = state.active_rules.map(r => `<li><b>${r.name}</b>: ${r.description}</li>`).join("");
-        rulesBtn.onclick = () => {
-          rulesContainer.style.display = rulesContainer.style.display === "none" ? "block" : "none";
-        };
-      }
-      
-      summary.classList.add("show");
+    openRuleDraft(options, state, onChoose) {
+      const milestone = getNextMilestone(state.current_round);
+      setText(get("#draftRoundValue"), String(state.current_round).padStart(2, "0"));
+      setText(get("#draftTargetText"), `第 ${milestone.round} 轮 · ${milestone.target} 分 · 已有 ${state.active_rules.length} 条`);
+      nodes.draftList.replaceChildren(...options.map((rule) => ruleElement(rule, onChoose)));
+      nodes.draft.classList.add("show");
     },
-    hideRoundSummary() {
-      if (!summary) return;
-      summary.classList.remove("show");
-      summary.classList.remove("waiting-confirm");
-    },
-
-    openRuleDraft(options, state, engineInfo, onChoose) {
-      if (!ruleDraft || !ruleDraftList) return;
-      ruleDraftList.innerHTML = "";
-      options.forEach((rule) => ruleDraftList.appendChild(createRuleDraftElement(rule, onChoose)));
-      
-      const targetText = root.querySelector("#draftTargetText");
-      if (targetText && engineInfo) {
-        const nextTarget = engineInfo.getNextTargetInfo(state.current_round);
-        targetText.textContent = `🎯 下个目标：第 ${nextTarget.round} 轮需达到 ${nextTarget.target} 分`;
-      }
-      
-      ruleDraft.classList.add("show");
-    },
-    closeRuleDraft() {
-      if (!ruleDraft) return;
-      ruleDraft.classList.remove("show");
-    },
-    openShop(state, cards, onBuy, onRemove, onContinue) {
-      if (!shop || !shopList) return;
-      shopList.innerHTML = "";
-      
-      // === 购买区 ===
-      const buyHeader = document.createElement("div");
-      buyHeader.style.cssText = "grid-column: 1 / -1; font-weight: bold; color: var(--color-gold); margin-top: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;";
-      buyHeader.textContent = "🛒 商店售卖区 (点击购买)";
-      shopList.appendChild(buyHeader);
-
-      if (cards.length === 0) {
-        const emptyTip = document.createElement("div");
-        emptyTip.style.cssText = "grid-column: 1 / -1; color: var(--muted); font-size: 14px; text-align:center; padding: 20px;";
-        emptyTip.textContent = "商品已被买空啦~";
-        shopList.appendChild(emptyTip);
-      } else {
-        cards.forEach((card) => shopList.appendChild(createShopCardElement(card, onBuy)));
-      }
-
-      // === 删牌/卡组总览区 ===
-      const removeHeader = document.createElement("div");
-      removeHeader.style.cssText = "grid-column: 1 / -1; font-weight: bold; color: var(--color-discard); margin-top: 24px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;";
-      removeHeader.textContent = `🗑️ 我的当前卡组 (点击可精简，当前费用: ${state.remove_card_cost} 金币)`;
-      shopList.appendChild(removeHeader);
-
-      // 将玩家当前的永久卡组遍历渲染
-      state.deck.forEach((card) => {
-        shopList.appendChild(createDeckCardElement(card, onRemove));
-      });
-
-      const continueButton = root.querySelector("#shopContinue");
-      continueButton?.addEventListener("click", onContinue, { once: true });
-      shop.classList.add("show");
-      this.renderHud(state, state.deck?.length ?? 0);
-    },
-    closeShop() {
-      if (!shop) return;
-      shop.classList.remove("show");
-    },
-    setShopMessage(message) {
-      const node = root.querySelector("#shopMessage");
-      if (node) node.textContent = message;
-    },
+    closeRuleDraft() { nodes.draft.classList.remove("show"); },
     showCountdown(onComplete) {
-      const overlay = root.querySelector("#countdownOverlay");
-      const text = root.querySelector("#countdownText");
-      if (!overlay || !text) { onComplete(); return; }
-      
+      const overlay = get("#countdownOverlay");
+      const text = get("#countdownText");
+      const frames = ["3", "2", "1", "开吃!"];
+      let index = 0;
       overlay.classList.add("show");
-      text.textContent = "开始 !";
-      text.style.transform = "scale(1.2)";
-      text.style.color = "#4ade80";
-      
-      setTimeout(() => {
-        overlay.classList.remove("show");
-        onComplete();
-      }, 600); // 仅仅停留 0.6 秒
+      const advance = () => {
+        text.classList.remove("pop");
+        void text.offsetWidth;
+        text.textContent = frames[index];
+        text.classList.add("pop");
+        index += 1;
+        if (index < frames.length) setTimeout(advance, 420);
+        else setTimeout(() => { overlay.classList.remove("show"); onComplete(); }, 320);
+      };
+      advance();
     },
+    showRoundSummary(result, state, outcome, onConfirm) {
+      const title = get("#summaryTitle");
+      const tip = get("#summaryTip");
+      const eyebrow = get("#summaryEyebrow");
+      const button = get("#summaryContinueBtn");
+      const list = get("#summaryBreakdownList");
+      const ruleResults = get("#summaryRuleResults");
 
-    showRoundSummary(result, state, isGameOver, onConfirm) {
-      const summary = root.querySelector("#roundSummary");
-      const list = root.querySelector("#summaryBreakdownList");
-      
-      // 动态生成账单（为动画做准备，目前直接显示）
-      if (list) {
-        list.innerHTML = result.breakdown.map(b => {
-          // 默认样式
-          let style = 'font-size: 15px; color: var(--text); border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 8px;';
-          
-          if (b.isTotal) {
-            // 底部总计样式（大字号、绿色、顶边框）
-            style = 'margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 24px; font-weight: bold; color: var(--accent-eat);';
-          } else if (b.isSubItem) {
-            // 子条目细分样式（小字号、灰色、缩进缩进、无下边框）
-            style = 'font-size: 13px; color: var(--muted); padding-left: 20px; border-bottom: none; padding-bottom: 0px; margin-top: -6px;';
-          }else if (b.isBonus) { // 【新增】
-            // 额外奖励样式（紫色、醒目）
-            style = 'font-size: 16px; font-weight: bold; color: #c4b5fd; border-bottom: 1px dashed rgba(196, 181, 253, 0.3); padding-bottom: 8px;';
-          }
+      list.innerHTML = result.breakdown.map((item) => `<div class="receipt-line ${item.kind ?? ""}"><span>${item.label}</span><b>${item.text}</b></div>`).join("");
+      ruleResults.innerHTML = result.rule_results
+        .filter((item) => item.multiplier !== 1)
+        .map((item) => `<span class="rule-result ${item.achieved ? "achieved" : "missed"}">${item.achieved ? "✓" : "·"} ${item.name}</span>`)
+        .join("");
+      get("#activeRulesList").innerHTML = state.active_rules.map((rule) => `<li><b>${rule.name}</b><span>${rule.description}</span></li>`).join("");
 
-          return `
-            <div style="display: flex; justify-content: space-between; align-items: center; ${style}">
-              <span>${b.label}</span>
-              <span>${b.text}</span>
-            </div>
-          `;
-        }).join("");
-      }
-
-      const btn = root.querySelector("#summaryContinueBtn");
-      const title = root.querySelector("#summaryTitle");
-      const tip = root.querySelector("#summaryTip");
-
-      if (isGameOver) {
-        title.textContent = "游戏结束"; title.style.color = "#f87171";
-        tip.textContent = "未达到阶段目标分数，挑战失败！";
-        btn.textContent = "重新开始游戏"; btn.style.background = "#f87171";
-        btn.onclick = () => location.reload();
+      if (outcome === "victory") {
+        eyebrow.textContent = "15 ROUNDS COMPLETE";
+        title.textContent = "通关成功！";
+        tip.textContent = `最终得分 ${state.total_score}，记录已保存到本机。`;
+        button.textContent = "再来一局";
+        button.classList.add("danger-action");
+      } else if (outcome === "defeat") {
+        eyebrow.textContent = "TARGET MISSED";
+        title.textContent = "挑战失败";
+        tip.textContent = `本阶段需要 ${getNextMilestone(state.current_round).target} 分，当前为 ${state.total_score} 分。`;
+        button.textContent = "重新开始";
+        button.classList.add("danger-action");
       } else {
-        title.textContent = "本轮结算"; title.style.color = "#e5e7eb";
-        btn.textContent = "确认结算，进入商店"; btn.style.background = "var(--accent-eat)";
-        btn.onclick = onConfirm;
+        eyebrow.textContent = `ROUND ${String(state.current_round).padStart(2, "0")} CLEAR`;
+        title.textContent = "本轮结算";
+        tip.textContent = `用时 ${(state.round.elapsed_ms / 1000).toFixed(1)} 秒 · 吃了 ${result.gold_reward} 张牌 · 金币 +${result.gold_reward}`;
+        button.textContent = "确认结算 · 进入商店";
+        button.classList.remove("danger-action");
       }
-      
-      // 规则查看逻辑保持不变
-      let rulesBtn = root.querySelector("#viewRulesBtn");
-      const rulesContainer = root.querySelector("#activeRulesContainer");
-      const rulesList = root.querySelector("#activeRulesList");
-      if (rulesBtn && rulesContainer && rulesList && state) {
-        rulesContainer.style.display = "none";
-        rulesList.innerHTML = state.active_rules.map(r => `<li><b>${r.name}</b>: ${r.description}</li>`).join("");
-        const newBtn = rulesBtn.cloneNode(true);
-        rulesBtn.parentNode.replaceChild(newBtn, rulesBtn);
-        rulesBtn = newBtn;
-        rulesBtn.addEventListener("click", (e) => {
-          e.preventDefault(); e.stopPropagation();
-          rulesContainer.style.display = rulesContainer.style.display === "none" ? "block" : "none";
-        });
-      }
-      
-      if(summary) summary.classList.add("show");
+      button.onclick = onConfirm;
+      nodes.summary.classList.add("show");
     },
-    hideRoundSummary() { if (summary) summary.classList.remove("show"); },
+    hideRoundSummary() { nodes.summary.classList.remove("show"); },
+    openShop(state, cards, onBuy, onRemove, onContinue) {
+      renderHud(state);
+      nodes.shopOffers.replaceChildren(...cards.map((card) => shopCardElement(card, onBuy)));
+      if (cards.length === 0) nodes.shopOffers.innerHTML = '<p class="empty-shop">商品售罄</p>';
+      nodes.shopDeck.replaceChildren(...state.deck.map((card) => deckChipElement(card, state.remove_card_cost, onRemove)));
+      get("#shopContinue").onclick = onContinue;
+      nodes.shop.classList.add("show");
+    },
+    closeShop() { nodes.shop.classList.remove("show"); },
+    setShopMessage(message, tone = "normal") {
+      const node = get("#shopMessage");
+      setText(node, message);
+      node.dataset.tone = tone;
+    },
   };
 }

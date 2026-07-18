@@ -1,48 +1,60 @@
+import { GAME_CONFIG } from "./config.js";
 import { createShopCardPool, getCardById } from "./data.js";
+import { getRarityPrice, getShopWeight, RARITY_MODEL } from "./balance.js";
 
-function shuffle(list) {
-  const next = [...list];
-  for (let i = next.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [next[i], next[j]] = [next[j], next[i]];
+export const RARITY_PRICE = Object.freeze(Object.fromEntries(
+  Object.entries(RARITY_MODEL).map(([rarity, model]) => [rarity, model.price]),
+));
+
+function takeWeighted(pool, round, random) {
+  const weights = pool.map((card) => getShopWeight(card, round));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  if (total <= 0) return pool.splice(0, 1)[0];
+
+  let roll = random() * total;
+  for (let index = 0; index < pool.length; index += 1) {
+    roll -= weights[index];
+    if (roll < 0) return pool.splice(index, 1)[0];
   }
-  return next;
+  return pool.pop();
 }
 
-export function createShopService() {
+export function createShopService(options = {}) {
+  const random = options.random ?? Math.random;
+  const createId = options.create_id ?? (() => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
+
   function getShopCards(state) {
-    const pool = shuffle(createShopCardPool());
-    // 优惠券效果在这里生效
-    const discount = state.shopDiscount || 0;
-    return pool.slice(0, 3).map((card, index) => {
-      const basePrice = Math.max(1, Math.ceil((card.eat_points + card.discard_points + state.deck.length + index) / 2));
-      return {
+    const discount = state.round.shop_discount ?? 0;
+    const pool = createShopCardPool();
+    const offers = [];
+    while (offers.length < GAME_CONFIG.shop_offer_count && pool.length > 0) {
+      offers.push(takeWeighted(pool, state.current_round, random));
+    }
+    return offers
+      .map((card) => ({
         ...card,
-        shopPrice: Math.max(1, basePrice - discount), 
-      };
-    });
+        shop_price: Math.max(1, getRarityPrice(card.rarity) - discount),
+      }));
   }
 
   function buyCard(state, card) {
-    if (state.gold < card.shopPrice) return false;
-    state.gold -= card.shopPrice;
-    // 生成新的UUID加入永久卡组，绝对不会覆盖原有卡组
-    state.deck.push({ ...(getCardById(card.id) || card), uuid: Math.random().toString(36).substr(2, 9) });
+    if (state.gold < card.shop_price) return false;
+    const cleanCard = getCardById(card.id);
+    if (!cleanCard) return false;
+    state.gold -= card.shop_price;
+    state.deck.push({ ...cleanCard, uuid: createId(cleanCard, state.deck.length) });
     return true;
   }
 
   function removeCard(state, cardUuid) {
-    const cost = state.remove_card_cost;
-    if (state.gold < cost) return false;
-    // 根据唯一 UUID 精准删牌
-    const index = state.deck.findIndex((c) => c.uuid === cardUuid);
+    if (state.deck.length <= 1 || state.gold < state.remove_card_cost) return false;
+    const index = state.deck.findIndex((card) => card.uuid === cardUuid);
     if (index < 0) return false;
-    
-    state.gold -= cost;
-    state.deck.splice(index, 1); // 仅仅移除这1张牌
-    
+
+    state.gold -= state.remove_card_cost;
+    state.deck.splice(index, 1);
     state.remove_count += 1;
-    state.remove_card_cost = state.remove_count === 0 ? 0 : (state.remove_count === 1 ? 5 : 10);
+    state.remove_card_cost = state.remove_count * GAME_CONFIG.delete_cost_step;
     return true;
   }
 

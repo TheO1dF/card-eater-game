@@ -1,0 +1,14 @@
+{
+  "name": "card-eater-demo",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test --test-isolation=none",
+    "check": "node --check js/main.js && node --test --test-isolation=none && node scripts/build.mjs",
+    "cf:projects": "npx wrangler pages project list",
+    "deploy:pages": "npm run build && npx wrangler pages deploy dist"
+  }
+}
