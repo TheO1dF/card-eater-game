@@ -275,11 +275,46 @@ const expression = `(async () => {
     }
   }
   const metaUrl = metaAtlas.toDataURL("image/webp", quality);
+
+  const shopMetaSource = new Image();
+  shopMetaSource.src = new URL("assets/shop-items-atlas-v013-source.png", location.href).href;
+  await shopMetaSource.decode();
+  const shopMetaColumns = 6;
+  const shopMetaRows = 4;
+  const shopMetaCellOutput = 128;
+  const shopMetaAtlas = document.createElement("canvas");
+  shopMetaAtlas.width = shopMetaColumns * shopMetaCellOutput;
+  shopMetaAtlas.height = shopMetaRows * shopMetaCellOutput;
+  const shopMetaContext = shopMetaAtlas.getContext("2d", { alpha: false });
+  shopMetaContext.imageSmoothingEnabled = false;
+  shopMetaContext.fillStyle = "#000000";
+  shopMetaContext.fillRect(0, 0, shopMetaAtlas.width, shopMetaAtlas.height);
+  for (let shopY = 0; shopY < shopMetaRows; shopY += 1) {
+    for (let shopX = 0; shopX < shopMetaColumns; shopX += 1) {
+      const sourceX = Math.round(shopX * shopMetaSource.naturalWidth / shopMetaColumns);
+      const sourceY = Math.round(shopY * shopMetaSource.naturalHeight / shopMetaRows);
+      const sourceRight = Math.round((shopX + 1) * shopMetaSource.naturalWidth / shopMetaColumns);
+      const sourceBottom = Math.round((shopY + 1) * shopMetaSource.naturalHeight / shopMetaRows);
+      shopMetaContext.drawImage(
+        shopMetaSource,
+        sourceX,
+        sourceY,
+        sourceRight - sourceX,
+        sourceBottom - sourceY,
+        shopX * shopMetaCellOutput,
+        shopY * shopMetaCellOutput,
+        shopMetaCellOutput,
+        shopMetaCellOutput,
+      );
+    }
+  }
+  const shopMetaUrl = shopMetaAtlas.toDataURL("image/webp", quality);
   return {
     sheets: sheetOutput,
     cards: cardOutput,
     atlas: atlasUrl.slice(atlasUrl.indexOf(",") + 1),
     meta: metaUrl.slice(metaUrl.indexOf(",") + 1),
+    shopMeta: shopMetaUrl.slice(shopMetaUrl.indexOf(",") + 1),
   };
 })()`;
 
@@ -307,5 +342,7 @@ await writeFile(resolve(root, "assets", "cards-atlas.webp"), Buffer.from(result.
 console.log("Exported runtime atlas -> cards-atlas.webp");
 await writeFile(resolve(root, "assets", "meta-atlas.webp"), Buffer.from(result.result.value.meta, "base64"));
 console.log("Exported UI icon atlas -> meta-atlas.webp");
+await writeFile(resolve(root, "assets", "shop-items-atlas-v013.webp"), Buffer.from(result.result.value.shopMeta, "base64"));
+console.log("Exported shop item atlas -> shop-items-atlas-v013.webp");
 
 socket.close();

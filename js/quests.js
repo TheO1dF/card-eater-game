@@ -27,13 +27,13 @@ export const QUEST_LIBRARY = Object.freeze([
   }, 9),
   quest({
     id: "QST03", name: "虚空债券", risk: "永久负面",
-    penalty: { kind: "add_permanent_void", count: 1, description: "永久向牌组加入 1 张吃弃皆 -1、无类别的虚空牌。" },
+    penalty: { kind: "add_permanent_void", count: 1, description: "永久向牌组加入 1 张吃 -2、弃 -1、无类别的虚空牌。" },
     condition: { kind: "min_round_score", target_multiplier: 1.25, description: "本轮分数达到强化任务目标。" },
     reward: { kind: "item", item_id: "IT008" },
   }, 10),
   quest({
     id: "QST04", name: "终末观测", risk: "永久负面",
-    penalty: { kind: "add_permanent_void", count: 1, description: "永久向牌组加入 1 张吃弃皆 -1、无类别的虚空牌。" },
+    penalty: { kind: "add_permanent_void", count: 1, description: "永久向牌组加入 1 张吃 -2、弃 -1、无类别的虚空牌。" },
     condition: { kind: "last_discard_and_score", target_multiplier: 0.9, description: "最后一张牌必须弃掉，并达到任务目标。" },
     reward: { kind: "item", item_id: "IT001" },
   }, 11),
@@ -57,7 +57,7 @@ export const QUEST_LIBRARY = Object.freeze([
   }, 14),
   quest({
     id: "QST08", name: "无底胃契", risk: "重度永久负面", min_round: 9,
-    penalty: { kind: "add_permanent_void", count: 2, description: "永久向牌组加入 2 张吃弃皆 -1、无类别的虚空牌。" },
+    penalty: { kind: "add_permanent_void", count: 2, description: "永久向牌组加入 2 张吃 -2、弃 -1、无类别的虚空牌。" },
     condition: { kind: "min_deck_and_score", count: 14, target_multiplier: 1.15, description: "牌组至少 14 张，并达到任务目标。" },
     reward: { kind: "item", item_id: "IT007" },
   }, 15),

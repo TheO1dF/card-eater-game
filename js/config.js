@@ -1,13 +1,13 @@
 export const GAME_CONFIG = Object.freeze({
-  schema_version: 9,
+  schema_version: 10,
   total_rounds: 15,
   draft_size: 3,
   quest_interval: 3,
   last_quest_round: 12,
   milestone_targets: Object.freeze({
-    5: 100,
-    10: 500,
-    15: 1800,
+    5: 120,
+    10: 750,
+    15: 4000,
   }),
   delete_cost_step: 3,
   shop_offer_count: 3,

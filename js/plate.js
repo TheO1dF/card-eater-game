@@ -11,10 +11,15 @@ export function getPlateDrawBudget(deckSize, plateCapacity) {
 export function takeRoundDrawPile(shuffledDeck, plateCapacity) {
   const cards = [...shuffledDeck];
   const actionBudget = getPlateDrawBudget(cards.length, plateCapacity);
+  const reserve = cards.slice(actionBudget);
   return {
     draw_pile: cards.slice(0, actionBudget),
     action_budget: actionBudget,
-    reserve_count: Math.max(0, cards.length - actionBudget),
+    reserve_count: reserve.length,
+    reserve_type_counts: reserve.reduce((counts, card) => {
+      counts[card.type] = (counts[card.type] ?? 0) + 1;
+      return counts;
+    }, {}),
   };
 }
 

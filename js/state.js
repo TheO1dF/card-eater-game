@@ -31,6 +31,7 @@ export function createRoundState() {
     draw_pile: [],
     action_budget: 0,
     reserve_count: 0,
+    reserve_type_counts: {},
     actions: [],
     eat_sequence: [],
     discard_sequence: [],

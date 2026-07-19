@@ -171,19 +171,29 @@ function cardPurchaseValue(card, state, policy) {
   if (["gain_reshuffle_charge", "gain_reshuffle_charge_destroy"].includes(kind) && state.deck.length <= 10) effect += policy === "small" ? 18 : 11;
   if (["permanent_growth_eat", "permanent_growth_condition", "store_or_cashout"].includes(kind)) effect += state.current_round <= 7 ? 6 : 2;
   if (kind === "scale_by_deck" || kind === "scale_by_unique_deck") effect += policy === "large" ? 7 : 2;
+  if (policy === "small" && ["generate_card", "generate_card_on_condition", "destroy_previous_generate"].includes(kind)) effect -= 8;
   if (kind === "position_tradeoff") effect -= 3;
+  const compactPressure = policy === "small" ? Math.max(0, state.deck.length - 7) * 3 : 0;
   const capacityPressure = state.deck.length >= state.plate_capacity ? 2.5 : 0;
-  return printed * 1.2 + effect + tagMatches * 0.8 - card.shop_price * 1.35 - capacityPressure;
+  return printed * 1.2 + effect + tagMatches * 0.8 - card.shop_price * 1.35 - capacityPressure - compactPressure;
 }
 
 function itemPurchaseValue(item, state, policy) {
   const kind = item.effect?.kind;
+  const hasReserve = state.deck.length > state.plate_capacity;
   let value = 5 - item.shop_price * 0.75;
-  if (item.role === "经济" || item.role === "商店") value += state.current_round <= 8 ? 8 : 3;
+  if (item.role.includes("经济") || item.role === "商店") value += state.current_round <= 8 ? 8 : 3;
   if (kind === "round_reshuffle_charge" && state.deck.length <= 10) value += policy === "small" ? 18 : 11;
   if (kind === "plate_upgrade_discount") value += policy === "large" ? 8 : 4;
-  if (["keyword_card_bonus", "generated_card_bonus"].includes(kind)) value += state.deck.filter((card) => card.effect?.keywords?.includes(item.effect.keyword)).length;
-  if (kind === "deck_size_multiplier") value += policy === "large" ? 8 : 1;
+  if (kind === "keyword_card_bonus") value += state.deck.filter((card) => card.effect?.keywords?.includes(item.effect.keyword)).length;
+  if (kind === "generated_card_gold") value += state.deck.filter((card) => card.generated_from).length * 2;
+  if (kind === "keyword_first_gold") value += state.deck.some((card) => card.effect?.keywords?.includes(item.effect.keyword)) ? 5 : -2;
+  if (kind === "compact_first_each_bonus") value += state.deck.length <= item.effect.maximum ? (policy === "small" ? 11 : 7) : -3;
+  if (kind === "full_plate_reroll_discount") value += hasReserve ? 0 : 5;
+  if (["reserve_matching_type_bonus", "reserve_last_bonus", "reserve_first_action_bonus", "reserve_first_discard_gold"].includes(kind)) value += hasReserve ? 5 : 0;
+  if (kind === "singleton_name_bonus") value += state.deck.filter((card, index, deck) => deck.findIndex((owned) => owned.id === card.id) === index).length * 0.35;
+  if (kind === "singleton_type_bonus") value += new Set(state.deck.map((card) => card.type)).size * 0.3;
+  if (["wrong_edibility_bonus", "lower_side_bonus", "plate_edge_bonus", "last_correct_action_bonus"].includes(kind)) value += 3;
   return value;
 }
 
@@ -237,11 +247,13 @@ function shopTurn(state, shop, policy) {
   }
 
   if (policy !== "small") buyBestCard();
-  else if (state.deck.length < 9) buyBestCard();
+  else if (state.deck.length < 8) buyBestCard();
 
   const worst = [...state.deck].sort((a, b) => removalValue(a) - removalValue(b))[0];
   const shouldDelete = worst && (worst.rarity === "诅咒" || state.deck.length > state.plate_capacity + 1 || (policy === "small" && state.deck.length > 8));
-  if (shouldDelete && state.remove_card_cost <= state.gold && state.remove_card_cost <= (policy === "small" ? 6 : 3)) {
+  const affordableDeleteLimit = policy === "small" ? 9 : 3;
+  const deletionIsPrudent = policy !== "small" || state.remove_card_cost <= Math.max(3, Math.floor(state.gold * 0.4));
+  if (shouldDelete && state.remove_card_cost <= state.gold && state.remove_card_cost <= affordableDeleteLimit && deletionIsPrudent) {
     const cost = state.remove_card_cost;
     if (shop.removeCard(state, worst.uuid)) events.push(`删:${worst.name}(${cost})`);
   }

@@ -157,6 +157,37 @@ for (const viewport of [
     body_width: document.body.scrollWidth,
     viewport_width: document.documentElement.clientWidth
   })`);
+  const visuals = await evaluate(`(() => {
+    const centerOffset = (selector) => {
+      const button = document.querySelector(selector);
+      const children = [...(button?.children ?? [])];
+      const rect = button?.getBoundingClientRect();
+      if (!rect || children.length === 0) return null;
+      const childRects = children.map((child) => child.getBoundingClientRect());
+      const left = Math.min(...childRects.map((child) => child.left));
+      const right = Math.max(...childRects.map((child) => child.right));
+      return Math.abs((left + right) / 2 - (rect.left + rect.right) / 2);
+    };
+    const styleOf = (selector) => {
+      const node = document.querySelector(selector);
+      const style = node ? getComputedStyle(node) : null;
+      return style ? { display: style.display, align: style.alignItems, justify: style.justifyContent } : null;
+    };
+    const shadow = document.querySelector(".stack-shadow");
+    const art = document.querySelector(".game-card.is-active .card-art");
+    const shadowStyle = shadow ? getComputedStyle(shadow) : null;
+    const artStyle = art ? getComputedStyle(art) : null;
+    return {
+      plate_background: shadowStyle?.backgroundImage,
+      plate_radius: shadowStyle?.borderRadius,
+      card_art_background: artStyle?.backgroundImage,
+      eat_center_offset: centerOffset("#eatButton"),
+      discard_center_offset: centerOffset("#discardButton"),
+      eat_layout: styleOf("#eatButton"),
+      discard_layout: styleOf("#discardButton"),
+      sound_layout: styleOf("#soundButton"),
+    };
+  })()`);
   const deckViewer = {};
   deckViewer.button_visible = await evaluate(`(() => {
     const button = document.querySelector("#deckInfoButton");
@@ -216,6 +247,18 @@ for (const viewport of [
     gold: Number(document.querySelector("#goldValue")?.textContent),
     remaining: Number.parseInt(document.querySelector("#remainingValue")?.textContent ?? "0", 10)
   })`);
+  if (roundComplete.summary_visible) {
+    await evaluate('document.querySelector("#roundSummary")?.classList.remove("show")');
+    await wait(120);
+    roundComplete.empty_plate_visible = await evaluate(`(() => {
+      const plate = document.querySelector(".stack-shadow")?.getBoundingClientRect();
+      const cards = document.querySelectorAll(".game-card").length;
+      return Boolean(plate && plate.width > 100 && plate.height > 60 && cards === 0);
+    })()`);
+    await capture(`${viewport.name}-empty-plate`);
+    await evaluate('document.querySelector("#roundSummary")?.classList.add("show")');
+    await wait(80);
+  }
   const deleteConfirmation = { attempted: false };
   if (roundComplete.summary_visible) {
     await clickElement("#summaryContinueBtn");
@@ -250,7 +293,8 @@ for (const viewport of [
     plate_summary: document.querySelector("#shopPlateSummary")?.textContent?.replace(/\\s+/g, " ").trim(),
     plate_upgrade_label: document.querySelector("#shopPlateUpgrade")?.textContent,
     plate_upgrade_detail: document.querySelector("#shopPlateUpgradeDetail")?.textContent,
-    loaded_sprite_sheets: [...document.querySelectorAll(".shop-card-icon")].map((node) => getComputedStyle(node).backgroundImage)
+    loaded_sprite_sheets: [...document.querySelectorAll(".shop-card-icon")].map((node) => getComputedStyle(node).backgroundImage),
+    loaded_item_sprite_sheets: [...document.querySelectorAll(".shop-item-icon")].map((node) => getComputedStyle(node).backgroundImage)
   })`);
   const secondRound = { second_round_attempted: false };
   if (shopState.shop_visible) {
@@ -370,7 +414,7 @@ for (const viewport of [
       }
     }
   }
-  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, audio_overflow_safe: audioOverflowSafe, ...onboarding, ...draftGoal, ...state, ...deckViewer, actions, ...roundComplete, ...deleteConfirmation, ...shopState, ...secondRound });
+  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, audio_overflow_safe: audioOverflowSafe, ...onboarding, ...draftGoal, ...state, ...visuals, ...deckViewer, actions, ...roundComplete, ...deleteConfirmation, ...shopState, ...secondRound });
 }
 
 socket.close();
@@ -378,20 +422,27 @@ const failures = [];
 for (const report of reports) {
   const fail = (condition, message) => { if (!condition) failures.push(`${report.viewport}: ${message}`); };
   fail(report.draft_count === 3, "规则三选一数量异常");
-  fail(report.objective_text?.includes("100 / 500 / 1800"), "欢迎页未明确显示三阶段目标");
+  fail(report.objective_text?.includes("120 / 750 / 4000"), "欢迎页未明确显示三阶段目标");
   fail(report.loop_step_count === 3, "欢迎页缺少三步流程");
   fail(report.welcome_horizontal_overflow === false, "欢迎页横向溢出");
-  fail(report.target?.includes("100"), "规则页未显示下一阶段目标");
+  fail(report.target?.includes("120"), "规则页未显示下一阶段目标");
   fail(report.progress?.includes("还差") && report.progress?.includes("剩余"), "规则页缺少目标差值或剩余轮次");
   fail(report.help?.includes("规则怎么用"), "规则页缺少简要说明");
   fail(report.tiers?.length === 3, "规则卡缺少分层标签");
   fail(report.body_width <= report.viewport_width, "游戏页面横向溢出");
+  fail(report.plate_background?.includes("radial-gradient") && report.plate_radius === "50%", "餐盘未渲染为白色圆盘");
+  fail(report.card_art_background?.includes("radial-gradient"), "卡图没有放在盘面背景中央");
+  fail(report.empty_plate_visible === true, "吃完牌后没有留下可见餐盘");
+  fail((report.eat_center_offset ?? 99) <= 2 && (report.discard_center_offset ?? 99) <= 2, "吃弃按钮文字或符号未居中");
+  fail(report.eat_layout?.align === "center" && report.eat_layout?.justify === "center", "吃牌按钮布局未居中");
+  fail(report.sound_layout?.display === "grid" && report.sound_layout?.align === "center", "手机顶栏图标未居中");
   fail(report.topbar_buttons_overlap === false, "顶栏按钮互相遮挡");
   fail(report.deck_horizontal_overflow === false, "牌组面板横向溢出");
   fail(report.card_count > 0 && report.effect_count === report.card_count, "牌组面板没有完整显示卡牌效果");
   fail(report.capacity_cell_count === 4, "牌组面板缺少餐盘容量信息");
   fail(report.summary_visible === true, "第一轮未正常结算");
   fail(report.shop_visible === true && report.offer_count === 3 && report.item_offer_count === 3, "商店商品数量异常");
+  fail(report.loaded_item_sprite_sheets?.every((image) => image.includes("shop-items-atlas-v013.webp")), "商店道具未加载新版独立图集");
   fail(report.attempted === true && report.dialog_role === "alertdialog", "删牌确认浮窗未打开");
   fail(report.deck_while_open === report.deck_before, "打开确认浮窗时牌已被误删");
   fail(report.deck_after_cancel === report.deck_before, "取消删牌后牌组发生变化");

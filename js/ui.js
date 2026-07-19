@@ -80,7 +80,7 @@ function setText(node, value) {
 function metaStyle(entry) {
   const x = entry.icon_x * 100 / Math.max(1, entry.icon_columns - 1);
   const y = entry.icon_y * 100 / Math.max(1, entry.icon_rows - 1);
-  return `--meta-x:${x}%;--meta-y:${y}%;`;
+  return `--meta-image:url('./assets/${entry.icon_atlas}?v=13');--meta-size-x:${entry.icon_columns * 100}%;--meta-size-y:${entry.icon_rows * 100}%;--meta-x:${x}%;--meta-y:${y}%;`;
 }
 
 function itemElement(entry) {

@@ -10,6 +10,15 @@ const item = (definition, iconIndex) => Object.freeze({
   ...definition,
 });
 
+const shopItem = (definition, iconIndex) => Object.freeze({
+  icon_atlas: "shop-items-atlas-v013.webp",
+  icon_columns: 6,
+  icon_rows: 4,
+  icon_x: iconIndex % 6,
+  icon_y: Math.floor(iconIndex / 6),
+  ...definition,
+});
+
 export const ITEM_LIBRARY = Object.freeze([
   item({
     id: "IT001", name: "重启按钮", rarity: "任务", role: "主动",
@@ -43,8 +52,8 @@ export const ITEM_LIBRARY = Object.freeze([
   }, 5),
   item({
     id: "IT007", name: "无底封条", rarity: "任务", role: "大牌组",
-    description: "牌组达到 14 张时，本轮最终得分 ×1.2。",
-    effect: { kind: "deck_size_multiplier", minimum: 14, multiplier: 1.2 },
+    description: "牌组达到 14 张时，本轮最终得分 ×1.1。",
+    effect: { kind: "deck_size_multiplier", minimum: 14, multiplier: 1.1 },
   }, 6),
   item({
     id: "IT008", name: "任务王冠", rarity: "任务", role: "通用",
@@ -71,126 +80,126 @@ export const ITEM_LIBRARY = Object.freeze([
     description: "行动与前一张牌的吃/弃不同时，额外 +2 分。",
     effect: { kind: "alternating_action_bonus", bonus: 2 },
   }, 3),
-  item({
-    id: "IT101", name: "魔法帽", rarity: "普通道具", role: "生成", shop_price: 8, min_shop_round: 4,
+  shopItem({
+    id: "IT101", name: "魔法帽", rarity: "普通道具", role: "生成", shop_price: 15, min_shop_round: 7,
     description: "轮次结束时，将牌组中随机 1 张非兔子牌变为兔子。",
     effect: { kind: "round_end_transform", target_card_id: "A004" },
-  }, 8),
-  item({
-    id: "IT102", name: "旧罗盘", rarity: "普通道具", role: "位置", shop_price: 5,
-    description: "每轮第一张牌按正确食性处理时，额外 +2 分。",
-    effect: { kind: "first_correct_action_bonus", bonus: 2 },
-  }, 9),
-  item({
-    id: "IT103", name: "硬币别针", rarity: "普通道具", role: "经济", shop_price: 7, min_shop_round: 2,
+  }, 0),
+  shopItem({
+    id: "IT102", name: "旧罗盘", rarity: "普通道具", role: "首位", shop_price: 4,
+    description: "每轮第一张牌按正确食性处理时，额外 +1 分。",
+    effect: { kind: "first_correct_action_bonus", bonus: 1 },
+  }, 1),
+  shopItem({
+    id: "IT103", name: "硬币别针", rarity: "普通道具", role: "经济", shop_price: 8, min_shop_round: 3,
     description: "每轮首次弃牌时，结算金币 +1。",
     effect: { kind: "first_discard_gold", gold: 1 },
-  }, 10),
-  item({
-    id: "IT104", name: "冰箱贴", rarity: "普通道具", role: "相邻", shop_price: 6, min_shop_round: 2,
-    description: "与上一张牌同类别且做相同行动时，额外 +1 分。",
-    effect: { kind: "repeat_type_action_bonus", bonus: 1 },
-  }, 11),
-  item({
-    id: "IT105", name: "扩容腰包", rarity: "普通道具", role: "大牌组", shop_price: 7, min_shop_round: 4,
-    description: "牌组达到 14 张时，本轮最终得分 ×1.08。",
-    effect: { kind: "deck_size_multiplier", minimum: 14, multiplier: 1.08 },
-  }, 12),
-  item({
-    id: "IT106", name: "餐盘量尺", rarity: "普通道具", role: "餐盘", shop_price: 6, min_shop_round: 3,
+  }, 2),
+  shopItem({
+    id: "IT104", name: "候补餐签", rarity: "普通道具", role: "餐盘", shop_price: 5, min_shop_round: 2,
+    description: "若餐盘外还有同类别牌，每轮该类别首次处理时额外 +1 分。",
+    effect: { kind: "reserve_matching_type_bonus", bonus: 1, once_per_type: true },
+  }, 3),
+  shopItem({
+    id: "IT105", name: "合盖餐罩", rarity: "普通道具", role: "小牌组", shop_price: 7, min_shop_round: 3,
+    description: "若全部牌都能登上餐盘，付费刷新费用 -1，最低仍为 1 金币。",
+    effect: { kind: "full_plate_reroll_discount", amount: 1 },
+  }, 4),
+  shopItem({
+    id: "IT106", name: "餐盘量尺", rarity: "普通道具", role: "餐盘", shop_price: 9, min_shop_round: 4,
     description: "餐盘扩容费用永久 -1，最低仍为 1 金币。",
     effect: { kind: "plate_upgrade_discount", amount: 1 },
-  }, 13),
-  item({
+  }, 5),
+  shopItem({
     id: "IT107", name: "铰链夹", rarity: "普通道具", role: "相邻", shop_price: 6, min_shop_round: 2,
     description: "打出带【相邻】关键字的牌时，额外 +1 分。",
     effect: { kind: "keyword_card_bonus", keyword: "相邻", bonus: 1 },
-  }, 14),
-  item({
-    id: "IT108", name: "拆信刀", rarity: "普通道具", role: "摧毁", shop_price: 8, min_shop_round: 4,
-    description: "打出带【摧毁】关键字的牌时，额外 +2 分。",
-    effect: { kind: "keyword_card_bonus", keyword: "摧毁", bonus: 2 },
-  }, 15),
-  item({
-    id: "IT109", name: "育苗盘", rarity: "普通道具", role: "生成", shop_price: 5, min_shop_round: 2,
-    description: "由【生成】加入牌组的卡牌额外 +1 分。",
-    effect: { kind: "generated_card_bonus", bonus: 1 },
-  }, 4),
-  item({
-    id: "IT110", name: "年轮尺", rarity: "普通道具", role: "成长", shop_price: 5, min_shop_round: 2,
-    description: "打出带【成长】关键字的牌时，额外 +1 分。",
-    effect: { kind: "keyword_card_bonus", keyword: "成长", bonus: 1 },
-  }, 5),
-  item({
-    id: "IT111", name: "双色骰", rarity: "普通道具", role: "交替", shop_price: 6, min_shop_round: 2,
-    description: "行动与前一张牌的吃/弃不同时，额外 +1 分。",
-    effect: { kind: "alternating_action_bonus", bonus: 1 },
   }, 6),
-  item({
-    id: "IT112", name: "苦差零钱袋", rarity: "普通道具", role: "经济", shop_price: 7, min_shop_round: 3,
+  shopItem({
+    id: "IT108", name: "拆信刀", rarity: "普通道具", role: "摧毁", shop_price: 7, min_shop_round: 3,
+    description: "打出带【摧毁】关键字的牌时，额外 +1 分。",
+    effect: { kind: "keyword_card_bonus", keyword: "摧毁", bonus: 1 },
+  }, 7),
+  shopItem({
+    id: "IT109", name: "育苗盘", rarity: "普通道具", role: "生成经济", shop_price: 7, min_shop_round: 3,
+    description: "每轮首次处理由【生成】加入的牌时，结算金币 +1。",
+    effect: { kind: "generated_card_gold", gold: 1 },
+  }, 8),
+  shopItem({
+    id: "IT110", name: "年轮尺", rarity: "普通道具", role: "成长经济", shop_price: 7, min_shop_round: 3,
+    description: "每轮首次打出带【成长】的牌时，结算金币 +1。",
+    effect: { kind: "keyword_first_gold", keyword: "成长", gold: 1 },
+  }, 9),
+  shopItem({
+    id: "IT111", name: "独页餐册", rarity: "普通道具", role: "精简", shop_price: 6, min_shop_round: 2,
+    description: "牌组中只有 1 张同名牌时，处理它额外 +2 分。",
+    effect: { kind: "singleton_name_bonus", bonus: 2 },
+  }, 10),
+  shopItem({
+    id: "IT112", name: "苦差零钱袋", rarity: "普通道具", role: "风险经济", shop_price: 8, min_shop_round: 4,
     description: "每轮首次选择牌面负分的一侧时，结算金币 +1。",
     effect: { kind: "negative_action_gold", gold: 1, once_per_round: true },
-  }, 7),
-  item({
-    id: "IT113", name: "夜市会员卡", rarity: "普通道具", role: "商店", shop_price: 10, min_shop_round: 5,
+  }, 11),
+  shopItem({
+    id: "IT113", name: "夜市会员卡", rarity: "普通道具", role: "商店", shop_price: 12, min_shop_round: 6,
     description: "商店卡牌价格额外 -1，最低仍为 1 金币。",
     effect: { kind: "shop_price_discount", amount: 1 },
-  }, 8),
-  item({
-    id: "IT114", name: "折叠镜", rarity: "普通道具", role: "位置", shop_price: 6, min_shop_round: 3,
-    description: "既非首位也非末位的行动牌额外 +2 分。",
-    effect: { kind: "middle_action_bonus", bonus: 2 },
-  }, 9),
-  item({
-    id: "IT115", name: "回卷发条", rarity: "普通道具", role: "重洗", shop_price: 9, min_shop_round: 4,
+  }, 12),
+  shopItem({
+    id: "IT114", name: "候补餐罩", rarity: "普通道具", role: "餐盘末位", shop_price: 5, min_shop_round: 2,
+    description: "若有牌未登上餐盘，本轮最后一张牌额外 +2 分。",
+    effect: { kind: "reserve_last_bonus", bonus: 2 },
+  }, 13),
+  shopItem({
+    id: "IT115", name: "回卷发条", rarity: "普通道具", role: "重洗", shop_price: 16, min_shop_round: 7,
     description: "牌组不超过 10 张时，每轮获得 1 次重洗；可与其他重洗次数叠加。",
     effect: { kind: "round_reshuffle_charge", charges: 1, max_deck_size: 10 },
-  }, 10),
-  item({
-    id: "IT116", name: "零钱餐巾", rarity: "普通道具", role: "经济", shop_price: 7, min_shop_round: 3,
-    description: "每轮每弃 2 张牌获得 1 金币，最多触发 3 次。",
-    effect: { kind: "discard_gold_every", count: 2, gold: 1, max_triggers: 3 },
-  }, 11),
-  item({
-    id: "IT117", name: "缺口餐叉", rarity: "普通道具", role: "吃牌", shop_price: 2, min_shop_round: 1,
-    description: "每轮第一次吃牌额外 +1 分。",
-    effect: { kind: "first_action_kind_bonus", action: "eat", bonus: 1 },
-  }, 12),
-  item({
-    id: "IT118", name: "牛皮纸袋", rarity: "普通道具", role: "弃牌", shop_price: 2, min_shop_round: 1,
-    description: "每轮第一次弃牌额外 +1 分。",
-    effect: { kind: "first_action_kind_bonus", action: "discard", bonus: 1 },
-  }, 13),
-  item({
-    id: "IT119", name: "三格调味盒", rarity: "普通道具", role: "节奏", shop_price: 3, min_shop_round: 1,
-    description: "每轮第 3 张行动牌额外 +2 分。",
-    effect: { kind: "exact_action_number_bonus", action_number: 3, bonus: 2 },
   }, 14),
-  item({
+  shopItem({
+    id: "IT116", name: "剩菜罐", rarity: "普通道具", role: "候补经济", shop_price: 7, min_shop_round: 3,
+    description: "若有牌未登上餐盘，每轮首次弃牌时结算金币 +1。",
+    effect: { kind: "reserve_first_discard_gold", gold: 1 },
+  }, 15),
+  shopItem({
+    id: "IT117", name: "缺口餐叉", rarity: "普通道具", role: "弃食", shop_price: 4, min_shop_round: 1,
+    description: "主动弃掉可食用牌时，额外 +2 分。",
+    effect: { kind: "wrong_edibility_bonus", action: "discard", target_edibility: "edible", bonus: 2 },
+  }, 16),
+  shopItem({
+    id: "IT118", name: "牛皮纸袋", rarity: "普通道具", role: "硬吃", shop_price: 4, min_shop_round: 1,
+    description: "主动吃下不可食用牌时，额外 +1 分。",
+    effect: { kind: "wrong_edibility_bonus", action: "eat", target_edibility: "inedible", bonus: 1 },
+  }, 17),
+  shopItem({
+    id: "IT119", name: "随身盐盒", rarity: "普通道具", role: "小牌组", shop_price: 4, min_shop_round: 1,
+    description: "牌组不超过 8 张时，每轮首次吃牌与首次弃牌各额外 +2 分。",
+    effect: { kind: "compact_first_each_bonus", maximum: 8, bonus: 2 },
+  }, 18),
+  shopItem({
     id: "IT120", name: "盘沿夹", rarity: "普通道具", role: "位置", shop_price: 4, min_shop_round: 1,
     description: "每轮第一张与最后一张行动牌各额外 +1 分。",
     effect: { kind: "plate_edge_bonus", bonus: 1 },
-  }, 15),
-  item({
+  }, 19),
+  shopItem({
     id: "IT121", name: "保温软垫", rarity: "普通道具", role: "餐盘", shop_price: 4, min_shop_round: 1,
     description: "有牌未登上餐盘时，每轮第一张行动牌额外 +2 分。",
     effect: { kind: "reserve_first_action_bonus", bonus: 2 },
-  }, 0),
-  item({
-    id: "IT122", name: "分类标签", rarity: "普通道具", role: "分类", shop_price: 4, min_shop_round: 1,
-    description: "每连续正确处理 3 张牌，第 3 张额外 +2 分；处理错误会中断计数。",
-    effect: { kind: "correct_streak_bonus", count: 3, bonus: 2 },
-  }, 1),
-  item({
+  }, 20),
+  shopItem({
+    id: "IT122", name: "独份餐签", rarity: "普通道具", role: "单卡", shop_price: 5, min_shop_round: 2,
+    description: "牌组中仅有 1 张该类别的牌时，处理它额外 +3 分。",
+    effect: { kind: "singleton_type_bonus", bonus: 3 },
+  }, 21),
+  shopItem({
     id: "IT123", name: "尾单夹", rarity: "普通道具", role: "位置", shop_price: 4, min_shop_round: 1,
     description: "每轮最后一张牌按正确食性处理时，额外 +2 分。",
     effect: { kind: "last_correct_action_bonus", bonus: 2 },
-  }, 2),
-  item({
-    id: "IT124", name: "换色弹簧", rarity: "普通道具", role: "相邻", shop_price: 4, min_shop_round: 1,
-    description: "与上一张做相同行动但类别不同时，额外 +1 分。",
-    effect: { kind: "different_type_same_action_bonus", bonus: 1 },
-  }, 3),
+  }, 22),
+  shopItem({
+    id: "IT124", name: "逆向弹簧", rarity: "普通道具", role: "反向选择", shop_price: 5, min_shop_round: 2,
+    description: "选择两项牌面中较低的一侧时，额外 +2 分。",
+    effect: { kind: "lower_side_bonus", bonus: 2 },
+  }, 23),
 ]);
 
 const ITEM_BY_ID = Object.freeze(Object.fromEntries(ITEM_LIBRARY.map((entry) => [entry.id, entry])));
@@ -230,6 +239,8 @@ export function applyRoundItemSetup(state) {
 export function resolveItemActionEffects(state, action, card) {
   let flatBonus = 0;
   const messages = [];
+  const selectedPrinted = action === "eat" ? card.eat_points : card.discard_points;
+  const otherPrinted = action === "eat" ? card.discard_points : card.eat_points;
   const isCorrectAction = (targetAction, targetCard) => (
     (targetCard.edibility === "edible" && targetAction === "eat")
     || (targetCard.edibility === "inedible" && targetAction === "discard")
@@ -271,13 +282,6 @@ export function resolveItemActionEffects(state, action, card) {
         messages.push(`${entry.name}：金币 +${effect.gold}`);
       }
     }
-    if (effect.kind === "repeat_type_action_bonus") {
-      const previous = state.round.actions.at(-1);
-      if (previous?.type === card.type && previous.action === action) {
-        flatBonus = safeAdd(flatBonus, effect.bonus);
-        messages.push(`${entry.name} +${effect.bonus}`);
-      }
-    }
     if (effect.kind === "first_type_bonus") {
       const key = `item:${entry.id}:type:${card.type}`;
       if (!state.round.effect_trigger_counts[key]) {
@@ -290,6 +294,14 @@ export function resolveItemActionEffects(state, action, card) {
       flatBonus = safeAdd(flatBonus, effect.bonus);
       messages.push(`${entry.name} +${effect.bonus}`);
     }
+    if (effect.kind === "generated_card_gold" && card.generated_from) {
+      const key = `item:${entry.id}:gold`;
+      if (!state.round.effect_trigger_counts[key]) {
+        state.round.effect_trigger_counts[key] = 1;
+        state.round.pending_gold_bonus = safeAdd(state.round.pending_gold_bonus, effect.gold);
+        messages.push(`${entry.name}：金币 +${effect.gold}`);
+      }
+    }
     if (effect.kind === "alternating_action_bonus") {
       const previous = state.round.actions.at(-1);
       if (previous && previous.action !== action) {
@@ -301,27 +313,55 @@ export function resolveItemActionEffects(state, action, card) {
       flatBonus = safeAdd(flatBonus, effect.bonus);
       messages.push(`${entry.name} +${effect.bonus}`);
     }
-    if (effect.kind === "negative_action_gold") {
-      const printed = action === "eat" ? card.eat_points : card.discard_points;
-      const key = `item:${entry.id}:negative`;
-      if (printed < 0 && !state.round.effect_trigger_counts[key]) {
+    if (effect.kind === "keyword_first_gold" && card.effect?.keywords?.includes(effect.keyword)) {
+      const key = `item:${entry.id}:gold`;
+      if (!state.round.effect_trigger_counts[key]) {
         state.round.effect_trigger_counts[key] = 1;
         state.round.pending_gold_bonus = safeAdd(state.round.pending_gold_bonus, effect.gold);
         messages.push(`${entry.name}：金币 +${effect.gold}`);
       }
     }
-    if (effect.kind === "middle_action_bonus" && state.round.actions.length > 0 && state.round.draw_pile.length > 1) {
-      flatBonus = safeAdd(flatBonus, effect.bonus);
-      messages.push(`${entry.name} +${effect.bonus}`);
+    if (effect.kind === "negative_action_gold") {
+      const key = `item:${entry.id}:negative`;
+      if (selectedPrinted < 0 && !state.round.effect_trigger_counts[key]) {
+        state.round.effect_trigger_counts[key] = 1;
+        state.round.pending_gold_bonus = safeAdd(state.round.pending_gold_bonus, effect.gold);
+        messages.push(`${entry.name}：金币 +${effect.gold}`);
+      }
     }
-    if (effect.kind === "first_action_kind_bonus" && action === effect.action) {
-      const matchingActions = effect.action === "eat" ? state.round.eat_sequence : state.round.discard_sequence;
-      if (matchingActions.length === 0) {
+    if (effect.kind === "reserve_matching_type_bonus" && (state.round.reserve_type_counts?.[card.type] ?? 0) > 0) {
+      const key = `item:${entry.id}:type:${card.type}`;
+      if (!effect.once_per_type || !state.round.effect_trigger_counts[key]) {
+        state.round.effect_trigger_counts[key] = 1;
         flatBonus = safeAdd(flatBonus, effect.bonus);
         messages.push(`${entry.name} +${effect.bonus}`);
       }
     }
-    if (effect.kind === "exact_action_number_bonus" && state.round.actions.length + 1 === effect.action_number) {
+    if (effect.kind === "reserve_last_bonus" && state.round.reserve_count > 0 && state.round.draw_pile.length === 1) {
+      flatBonus = safeAdd(flatBonus, effect.bonus);
+      messages.push(`${entry.name} +${effect.bonus}`);
+    }
+    if (effect.kind === "wrong_edibility_bonus" && action === effect.action && card.edibility === effect.target_edibility) {
+      flatBonus = safeAdd(flatBonus, effect.bonus);
+      messages.push(`${entry.name} +${effect.bonus}`);
+    }
+    if (effect.kind === "compact_first_each_bonus" && state.deck.length <= effect.maximum) {
+      const key = `item:${entry.id}:${action}`;
+      if (!state.round.effect_trigger_counts[key]) {
+        state.round.effect_trigger_counts[key] = 1;
+        flatBonus = safeAdd(flatBonus, effect.bonus);
+        messages.push(`${entry.name} +${effect.bonus}`);
+      }
+    }
+    if (effect.kind === "singleton_name_bonus" && state.deck.filter((owned) => owned.id === card.id).length === 1) {
+      flatBonus = safeAdd(flatBonus, effect.bonus);
+      messages.push(`${entry.name} +${effect.bonus}`);
+    }
+    if (effect.kind === "singleton_type_bonus" && state.deck.filter((owned) => owned.type === card.type).length === 1) {
+      flatBonus = safeAdd(flatBonus, effect.bonus);
+      messages.push(`${entry.name} +${effect.bonus}`);
+    }
+    if (effect.kind === "lower_side_bonus" && selectedPrinted < otherPrinted) {
       flatBonus = safeAdd(flatBonus, effect.bonus);
       messages.push(`${entry.name} +${effect.bonus}`);
     }
@@ -333,27 +373,13 @@ export function resolveItemActionEffects(state, action, card) {
       flatBonus = safeAdd(flatBonus, effect.bonus);
       messages.push(`${entry.name} +${effect.bonus}`);
     }
-    if (effect.kind === "correct_streak_bonus") {
-      const key = `item:${entry.id}:streak`;
-      const streak = isCorrectAction(action, card)
-        ? (state.round.effect_trigger_counts[key] ?? 0) + 1
-        : 0;
-      state.round.effect_trigger_counts[key] = streak;
-      if (streak > 0 && streak % effect.count === 0) {
-        flatBonus = safeAdd(flatBonus, effect.bonus);
-        messages.push(`${entry.name} +${effect.bonus}`);
-      }
+    if (effect.kind === "reserve_first_discard_gold" && state.round.reserve_count > 0 && action === "discard" && state.round.discard_sequence.length === 0) {
+      state.round.pending_gold_bonus = safeAdd(state.round.pending_gold_bonus, effect.gold);
+      messages.push(`${entry.name}：金币 +${effect.gold}`);
     }
     if (effect.kind === "last_correct_action_bonus" && state.round.draw_pile.length === 1 && isCorrectAction(action, card)) {
       flatBonus = safeAdd(flatBonus, effect.bonus);
       messages.push(`${entry.name} +${effect.bonus}`);
-    }
-    if (effect.kind === "different_type_same_action_bonus") {
-      const previous = state.round.actions.at(-1);
-      if (previous?.action === action && previous.type !== card.type) {
-        flatBonus = safeAdd(flatBonus, effect.bonus);
-        messages.push(`${entry.name} +${effect.bonus}`);
-      }
     }
   }
   return { flat_bonus: flatBonus, messages };

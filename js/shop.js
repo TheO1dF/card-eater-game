@@ -106,7 +106,15 @@ export function createShopService(options = {}) {
 
   function getRerollCost(state) {
     if (state.round.shop_free_rerolls > 0) return 0;
-    return GAME_CONFIG.shop_reroll_base_cost + state.round.shop_reroll_count * GAME_CONFIG.shop_reroll_cost_step;
+    const fullPlateDiscount = state.deck.length <= state.plate_capacity
+      ? state.items
+        .filter((entry) => entry.effect?.kind === "full_plate_reroll_discount")
+        .reduce((total, entry) => total + (entry.effect.amount ?? 0), 0)
+      : 0;
+    return Math.max(
+      1,
+      GAME_CONFIG.shop_reroll_base_cost + state.round.shop_reroll_count * GAME_CONFIG.shop_reroll_cost_step - fullPlateDiscount,
+    );
   }
 
   function rerollShop(state) {
