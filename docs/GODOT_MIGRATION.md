@@ -8,6 +8,8 @@
 | --- | --- | --- |
 | `config.js`, `balance.js` | `GameConfig.gd` / `.tres` | 轮数、门槛、价格、商店权重 |
 | `data.js`, `rules.js` | JSON / Godot Resource | 卡牌与永久规则内容库 |
+| `quests.js`, `items.js` | JSON / Godot Resource | 危险任务、永久道具与奖励 |
+| `numbers.js` | `SafeNumbers.gd` | 有限值、饱和运算、紧凑显示 |
 | `state.js` | `GameState.gd`（Resource） | 可存档状态与阶段流转 |
 | `engine.js` | `RoundEngine.gd`（RefCounted） | 行为记录、序列、效果、结算 |
 | `platform.js` | Autoload `Platform.gd` | 时间、随机种子、UUID、震动、存档 |
@@ -16,11 +18,11 @@
 
 ## 稳定的数据契约
 
-字段统一使用 `snake_case`，阶段枚举保持 `Init / RuleDraft / Playing / Scoring / Shop / NextRound / GameOver`：
+字段统一使用 `snake_case`，阶段枚举保持 `Init / RuleDraft / QuestDraft / Playing / Scoring / Shop / NextRound / GameOver`：
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "phase": "Playing",
   "current_round": 6,
   "total_score": 220,
@@ -28,8 +30,13 @@
   "deck": [],
   "active_rules": [],
   "rule_history": [],
+  "items": [],
+  "active_quest": null,
+  "quest_history": [],
+  "permanent_multipliers": [],
   "round": {
     "draw_pile": [],
+    "spent_pile": [],
     "actions": [],
     "eat_sequence": [],
     "discard_sequence": [],
@@ -37,18 +44,25 @@
     "final_multipliers": [],
     "pending_gold_bonus": 0,
     "shop_discount": 0,
+    "shop_reroll_count": 0,
+    "shop_free_rerolls": 0,
+    "reshuffle_charges": 0,
+    "reshuffle_count": 0,
+    "effect_trigger_counts": {},
+    "consume_next_uuid": null,
+    "quest_flat_modifier": 0,
     "elapsed_ms": 0
   }
 }
 ```
 
-`active_rules` 是本局永久规则集合，每轮只追加、不替换；`rule_history` 用于回放与分析。卡牌稳定字段包括 `id/name/rarity/type/edibility/eat_points/discard_points/role/synergy_tags/effect`。像素资源由原始 5×4 初始牌图集和 5 张新生成的 5×2 透明图集组成，每张卡保存 `art_file/runtime_atlas/runtime_x/runtime_y/sprite_sheet/sprite_x/sprite_y`；H5 使用“7 张开局独立小图 + 单张中后期紧凑图集”，仓库同时保留独立 WebP 与原始图集，Godot 可直接使用独立纹理或按任一图集字段建立 `AtlasTexture`。
+`active_rules` 是本局永久规则集合，每轮只追加、不替换；`items`、`active_quest` 与两种 history 用于存档、回放和分析。卡牌稳定字段包括 `id/name/rarity/type/edibility/eat_points/discard_points/role/synergy_tags/effect`。每张卡保存 `art_file/runtime_atlas/runtime_x/runtime_y/sprite_sheet/sprite_x/sprite_y`；H5 使用“7 张开局独立小图 + 单张中后期紧凑图集”，任务和道具使用 4×4 `meta-atlas.webp`。Godot 可直接使用独立纹理，或按图集字段建立 `AtlasTexture`。
 
 运行时卡图不是直接按 AI 图集的固定格子裸切：`scripts/optimize-sprites.mjs` 会先移除跨格孤立像素，再根据 alpha 主体包围盒缩放到统一安全区并光学居中。Godot 侧若直接使用 `assets/cards/*.webp`，可获得与 H5 一致的图标尺寸和锚点；重新生成美术资源后应先运行该导出流程。
 
-`effect.kind` 使用数据驱动分派，当前类型包括：`buff_next_action`、`debuff_next_action`、`clear_debuff`、`permanent_growth_eat`、`gold_economy`、`shop_discount`、`scale_by_history`、`retro_multiplier_eaten_tag`、`bonus_if_previous`、`bonus_if_position`、`copy_previous_score`、`discard_all_remaining`。移植时按 `kind` 建立 Effect Resolver，不要为具体卡牌 ID 写分支。
+`effect.kind` 使用数据驱动分派，当前类型包括：`buff_next_action`、`debuff_next_action`、`clear_debuff`、`permanent_growth_eat`、`gold_economy`、`shop_discount`、`scale_by_history`、`retro_multiplier_eaten_tag`、`bonus_if_previous`、`bonus_if_position`、`bonus_if_neighbors`、`consume_next_card`、`copy_previous_score`、`discard_all_remaining`、`shop_free_reroll_destroy`、`gold_on_discard_count`、`gain_reshuffle_charge_destroy`。移植时按 `kind` 建立 Effect Resolver，不要为具体卡牌 ID 写分支。
 
-`actions` 保存全局顺序；`eat_sequence` 与 `discard_sequence` 只接收对应行为。新 Buff 在当前牌结算后加入，所以只影响未来牌；永久成长写回 `deck` 中 UUID 相同的牌，不写入当轮复制的 `draw_pile`。
+`actions` 保存全局顺序；`eat_sequence` 与 `discard_sequence` 只接收对应行为。新 Buff 在当前牌结算后加入，所以只影响未来牌；永久成长写回 `deck` 中 UUID 相同的牌，并同步当前轮副本。重洗只回收 `spent_pile` 中仍存在于永久牌组的 UUID，自毁或被吞噬的牌不能返回。所有加法、乘法和计数都应复刻 `numbers.js` 的有限值与饱和规则，分数上限为 `9e15`。
 
 ## Godot 输入手感复刻
 
@@ -74,6 +88,7 @@ Game (Control)
 ├── Controls
 └── OverlayLayer (CanvasLayer)
     ├── RuleDraft
+    ├── QuestDraft
     ├── RoundSummary
     ├── Shop
     └── GameOver
@@ -85,6 +100,6 @@ Game (Control)
 
 1. 将 `config/balance/data/rules` 导出为 JSON 或 Resource，并校验卡牌、规则 ID 唯一。
 2. 按 `test/core.test.js` 的输入输出移植 `GameState` 与 `RoundEngine`。
-3. 复刻状态迁移表、永久规则追加与全局去重抽取。
+3. 复刻状态迁移表、永久规则追加、任务轮、重洗和全局去重抽取。
 4. 接入卡牌场景、Tween、触摸手势和像素图集。
 5. 最后接商店、音频、震动和平台存档；保持 `RoundEngine` 无平台依赖。

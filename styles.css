@@ -162,6 +162,24 @@ button { -webkit-tap-highlight-color: transparent; }
 .timer-cell { border-color: var(--discard); }
 .timer-cell strong { font-variant-numeric: tabular-nums; }
 
+.inventory-bar {
+  position: absolute;
+  z-index: 18;
+  top: 142px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.inventory-bar > b { color: #8f7ca0; font-size: 7px; letter-spacing: .14em; }
+.item-tray { min-width: 0; display: flex; gap: 5px; overflow: hidden; pointer-events: auto; }
+.item-empty { color: #62566c; font-size: 7px; }
+.item-chip { position: relative; width: 30px; height: 30px; flex: 0 0 auto; border: 1px solid #6c587e; background: #17121f; box-shadow: 2px 2px 0 #09070d; }
+.meta-sprite { display: block; background-image: url('./assets/meta-atlas.webp?v=1'); background-repeat: no-repeat; image-rendering: pixelated; }
+.item-chip .meta-sprite { width: 100%; height: 100%; background-size: 400% 400%; background-position: var(--meta-x) var(--meta-y); }
+
 .playfield {
   position: relative;
   min-height: 0;
@@ -348,8 +366,11 @@ button { -webkit-tap-highlight-color: transparent; }
   background: #211a2d;
   z-index: 5;
 }
-.controls p { margin: 0; color: #84758e; font-size: 9px; line-height: 1.45; text-align: center; }
-.controls p span { color: var(--muted); letter-spacing: .16em; }
+.control-center { display: grid; place-items: center; gap: 4px; }
+.control-center small { color: #84758e; font-size: 7px; text-align: center; }
+.reshuffle-button { min-width: 112px; display: flex; justify-content: center; gap: 9px; padding: 7px 10px; border: 2px solid #78638c; color: var(--rare); background: #2b2337; box-shadow: 3px 3px 0 #09070d; cursor: pointer; font-weight: 900; }
+.reshuffle-button b { color: var(--gold); }
+.reshuffle-button:disabled { border-color: #3b3244; color: #62566c; background: #1a161f; box-shadow: none; cursor: not-allowed; }
 .action-button {
   min-height: 48px;
   display: flex;
@@ -445,6 +466,24 @@ button { -webkit-tap-highlight-color: transparent; }
 .rule-copy em { margin-top: 10px; color: #c8bad2; font-size: 10px; font-style: normal; line-height: 1.6; }
 .rule-multiplier { justify-self: end; color: var(--gold); font-size: 23px; font-weight: 900; }
 
+.quest-overlay { background: rgba(14,7,16,.985); }
+.quest-panel { border-color: #a85a74; box-shadow: 0 0 0 4px #0c0911, 10px 10px 0 rgba(0,0,0,.5), inset 0 0 0 2px #5a2f43; }
+.quest-warning { margin-bottom: 14px; padding: 8px 10px; border: 1px solid #8a4057; color: var(--danger); background: #24121c; font-size: 9px; font-weight: 900; text-align: center; }
+.quest-card { min-height: 252px; display: grid; grid-template-rows: auto auto 1fr auto; gap: 10px; padding: 14px; border: 2px solid #704052; color: var(--paper); background: #30202d; box-shadow: 5px 5px 0 #0b0911; text-align: left; cursor: pointer; }
+.quest-card:hover, .quest-card:focus-visible { border-color: var(--danger); transform: translateY(-3px); outline: 0; }
+.quest-card-head { display: flex; align-items: center; gap: 10px; }
+.quest-card-icon { width: 48px; height: 48px; flex: 0 0 auto; background-size: 400% 400%; background-position: var(--meta-x) var(--meta-y); }
+.quest-card-head small { color: var(--danger); font-size: 7px; }
+.quest-card-head strong { display: block; margin-top: 4px; font-size: 15px; }
+.quest-block { padding: 9px; border-left: 3px solid; background: #1a131d; }
+.quest-block b { display: block; margin-bottom: 5px; font-size: 8px; letter-spacing: .12em; }
+.quest-block span { display: block; color: #c5b4c7; font-size: 8px; line-height: 1.55; }
+.quest-penalty { border-color: var(--danger); }
+.quest-penalty b { color: var(--danger); }
+.quest-requirement { border-color: var(--gold); }
+.quest-requirement b { color: var(--gold); }
+.quest-reward { color: var(--eat); font-size: 9px; font-weight: 900; line-height: 1.5; }
+
 .countdown-overlay { z-index: 80; background: rgba(10,8,14,.9); }
 .countdown-pixel { color: var(--eat); text-shadow: 6px 6px 0 #173b2a; font-size: clamp(70px, 20vw, 140px); font-weight: 900; letter-spacing: .05em; }
 .countdown-pixel.pop { animation: countPop 420ms steps(5, end); }
@@ -470,6 +509,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .receipt-line.bonus { color: #71457e; }
 .receipt-line.rule { color: #36604a; font-weight: 900; }
 .receipt-line.total { margin-top: 7px; padding-top: 13px; border-top: 3px double #4b394d; border-bottom: 0; font-size: 19px; font-weight: 900; }
+.quest-result { margin: 11px 0; padding: 10px 12px; border: 1px solid #704052; background: #1a131d; font-size: 9px; line-height: 1.6; }
+.quest-result.success { border-color: var(--eat-dark); color: var(--eat); }
+.quest-result.failed { border-color: var(--discard-dark); color: var(--danger); }
 .rule-result-list { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
 .rule-result { padding: 5px 7px; border: 1px solid #554662; color: #83748d; background: #18131f; font-size: 8px; }
 .rule-result.achieved { border-color: var(--eat-dark); color: var(--eat); }
@@ -528,6 +570,10 @@ button { -webkit-tap-highlight-color: transparent; }
 .shop-card-copy em, .shop-card-copy i { margin-top: 6px; color: #bbaaC5; font-size: 8px; font-style: normal; line-height: 1.35; }
 .shop-card-copy i { color: #8e7e99; }
 .price-tag { position: absolute; right: 8px; bottom: 8px; padding: 4px 6px; color: #352717; background: var(--gold); font-size: 9px; font-weight: 900; }
+.shop-reroll-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 13px 0 4px; }
+.shop-reroll-row small { color: #887890; font-size: 7px; text-align: right; }
+.shop-reroll-button { min-width: 190px; padding: 9px 12px; border: 2px solid #765d84; color: var(--gold); background: #241d2f; box-shadow: 3px 3px 0 #09070d; cursor: pointer; font-weight: 900; }
+.shop-reroll-button:disabled { color: #706477; border-color: #463b4e; cursor: not-allowed; box-shadow: none; }
 .deck-manager { max-height: 150px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; padding: 3px; overflow: auto; }
 .deck-chip { min-width: 0; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 2px 7px; padding: 7px; border: 1px solid #554761; color: var(--paper); background: #282131; text-align: left; cursor: pointer; }
 .deck-chip > span { grid-row: span 3; place-self: center; width: 30px; height: 30px; border: 1px solid #493b52; background-color: #18131f; background-clip: padding-box; transform-origin: center; filter: hue-rotate(var(--sprite-hue, 0deg)) drop-shadow(2px 2px 0 rgba(0,0,0,.3)); }
@@ -565,6 +611,9 @@ button { -webkit-tap-highlight-color: transparent; }
   .hud-cell { padding: 5px 4px; border-left-width: 2px; text-align: center; }
   .hud-cell span { font-size: 7px; }
   .hud-cell strong { font-size: 13px; }
+  .inventory-bar { top: calc(116px + env(safe-area-inset-top)); left: 7px; right: 7px; }
+  .inventory-bar > b { display: none; }
+  .item-chip { width: 25px; height: 25px; }
   .playfield { grid-template-rows: minmax(34px, .36fr) minmax(250px, 4fr) minmax(34px, .36fr); }
   .action-zone { min-width: 104px; padding: 3px 9px; column-gap: 4px; }
   .action-zone b { font-size: 9px; }
@@ -576,7 +625,8 @@ button { -webkit-tap-highlight-color: transparent; }
   .card-title strong { font-size: clamp(23px, 7vw, 31px); }
   .card-effect { min-height: 30px; padding: 5px 7px; font-size: 8px; }
   .controls { grid-template-columns: minmax(88px, 1fr) .9fr minmax(88px, 1fr); gap: 8px; padding: 8px 9px calc(8px + env(safe-area-inset-bottom)); }
-  .controls p { font-size: 7px; }
+  .control-center small { display: none; }
+  .reshuffle-button { min-width: 76px; padding: 6px; font-size: 8px; }
   .action-button { min-height: 44px; font-size: 11px; }
   .action-button kbd { width: 22px; height: 22px; }
   .overlay { padding: max(11px, env(safe-area-inset-top)) 11px max(11px, env(safe-area-inset-bottom)); }
@@ -585,8 +635,15 @@ button { -webkit-tap-highlight-color: transparent; }
   .rule-copy strong { margin-top: 4px; font-size: 14px; }
   .rule-copy em { margin-top: 5px; font-size: 8px; }
   .rule-multiplier { align-self: center; font-size: 18px; }
+  .quest-card { min-height: 218px; grid-template-columns: 1fr; grid-template-rows: auto auto auto auto; gap: 7px; padding: 10px; }
+  .quest-card-head { grid-column: 1; }
+  .quest-card-icon { width: 40px; height: 40px; }
+  .quest-block { padding: 7px; }
+  .quest-reward { grid-column: 1; }
   .shop-grid { grid-template-columns: 1fr; }
   .shop-card { min-height: 118px; }
+  .shop-reroll-row { align-items: stretch; flex-direction: column; }
+  .shop-reroll-row small { text-align: left; }
   .deck-manager { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 170px; }
 }
 

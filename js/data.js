@@ -18,6 +18,8 @@ const SPRITE_MAP = Object.freeze({
   A002: [4, 0, 1], A003: [4, 1, 1], A004: [4, 2, 1], A005: [4, 3, 1], P001: [4, 4, 1],
   P002: [5, 0, 0], P003: [5, 1, 0], P004: [5, 2, 0], P005: [5, 3, 0], U001: [0, 3, 3],
   U002: [5, 0, 1], U003: [5, 1, 1], U004: [5, 2, 1], U005: [5, 3, 1], U006: [5, 4, 1],
+  F009: [6, 0, 0], C007: [6, 1, 0], A006: [6, 2, 0], U007: [6, 3, 0], P006: [6, 4, 0],
+  U008: [6, 0, 1], D007: [6, 1, 1], C008: [6, 2, 1], U009: [6, 3, 1], Q001: [6, 4, 1],
 });
 
 let runtimeArtIndex = 0;
@@ -34,7 +36,7 @@ const card = (definition) => {
     runtime_art_mode: artIndex < 7 ? "individual" : "atlas",
     runtime_atlas: "cards-atlas.webp",
     runtime_columns: 10,
-    runtime_rows: 5,
+    runtime_rows: 6,
     runtime_x: artIndex % 10,
     runtime_y: Math.floor(artIndex / 10),
     sprite_sheet: sheet ? `card-sprites-set-${sheet}.webp` : "card-sprites.webp",
@@ -55,7 +57,7 @@ const BASE_CARD_DEFS = [
   card({ id: "D001", sprite_x: 0, sprite_y: 1, name: "甜甜圈", rarity: "普通", type: "甜点", edibility: EDIBLE, eat_points: 2, discard_points: 0, role: BASELINE, synergy_tags: ["甜点", "连吃"], effect: null }),
   card({ id: "C001", sprite_x: 0, sprite_y: 2, name: "星星", rarity: "普通", type: "星体", edibility: INEDIBLE, eat_points: -2, discard_points: 1, role: BASELINE, synergy_tags: ["星体", "连弃"], effect: null }),
   card({ id: "A001", sprite_x: 4, sprite_y: 2, name: "橘猫", rarity: "普通", type: "动物", edibility: INEDIBLE, eat_points: -2, discard_points: 1, role: BASELINE, synergy_tags: ["动物", "连弃"], effect: null }),
-  card({ id: "U001", sprite_x: 3, sprite_y: 3, name: "打折券", rarity: "普通", type: "通用", edibility: INEDIBLE, eat_points: -1, discard_points: 1, role: ECONOMY, synergy_tags: ["通用", "经济"], effect: { kind: "shop_discount", description: "弃掉后，随后商店价格 -1", trigger_action: "discard", discount: 1 } }),
+  card({ id: "U001", sprite_x: 3, sprite_y: 3, name: "打折券", rarity: "普通", type: "通用", edibility: INEDIBLE, eat_points: -1, discard_points: 1, role: ECONOMY, synergy_tags: ["通用", "经济"], effect: { kind: "shop_discount", description: "每轮首次弃掉后，随后商店价格 -1", trigger_action: "discard", discount: 1, once_per_round: true } }),
 ];
 
 const SHOP_CARD_DEFS = [
@@ -109,16 +111,31 @@ const SHOP_CARD_DEFS = [
   // People: directional setup and one extreme sacrifice capstone.
   card({ id: "P001", sprite_x: 1, sprite_y: 3, name: "宇航员", rarity: "罕见", type: "人物", edibility: INEDIBLE, eat_points: -4, discard_points: 2, role: SETUP, synergy_tags: ["人物", "星体"], effect: { kind: "buff_next_action", description: "接下来 2 张星体弃分 ×2", trigger_action: "discard", action: "discard", target_type: "星体", count: 2, multiplier: 2 } }),
   card({ id: "P002", sprite_x: 2, sprite_y: 3, name: "厨师", rarity: "稀有", type: "人物", edibility: INEDIBLE, eat_points: -4, discard_points: 3, role: SETUP, synergy_tags: ["人物", "食物"], effect: { kind: "buff_next_action", description: "接下来 2 张可食用牌吃分 ×1.5", trigger_action: "discard", action: "eat", target_edibility: EDIBLE, count: 2, multiplier: 1.5 } }),
-  card({ id: "P003", sprite_x: 2, sprite_y: 3, sprite_hue: 70, name: "商人", rarity: "普通", type: "人物", edibility: INEDIBLE, eat_points: -2, discard_points: 1, role: ECONOMY, synergy_tags: ["人物", "经济"], effect: { kind: "shop_discount", description: "弃掉后，随后商店价格 -2", trigger_action: "discard", discount: 2 } }),
+  card({ id: "P003", sprite_x: 2, sprite_y: 3, sprite_hue: 70, name: "商人", rarity: "稀有", min_shop_round: 5, max_copies: 1, type: "人物", edibility: INEDIBLE, eat_points: -2, discard_points: 1, role: ECONOMY, synergy_tags: ["人物", "经济", "唯一"], effect: { kind: "shop_discount", description: "每轮首次弃掉后，随后商店价格 -2", trigger_action: "discard", discount: 2, once_per_round: true } }),
   card({ id: "P004", sprite_x: 2, sprite_y: 3, sprite_hue: 120, name: "营养师", rarity: "罕见", type: "人物", edibility: INEDIBLE, eat_points: -3, discard_points: 2, role: SETUP, synergy_tags: ["人物", "食物"], effect: { kind: "buff_next_action", description: "接下来 4 张可食用牌吃分 +1", trigger_action: "discard", action: "eat", target_edibility: EDIBLE, count: 4, modifier: "flat", add: 1 } }),
   card({ id: "P005", sprite_x: 2, sprite_y: 3, sprite_hue: 45, sprite_scale: 1.12, name: "国王", rarity: "传奇", type: "人物", edibility: INEDIBLE, eat_points: -10, discard_points: 0, role: SACRIFICE, synergy_tags: ["人物", "牺牲", "爆发"], effect: { kind: "buff_next_action", description: "硬吃 -10；下一张牌得分 ×5", trigger_action: "eat", action: "*", count: 1, multiplier: 5 } }),
 
   // Utilities: economy, targeted engines, discarded-food payoffs, and score copying.
-  card({ id: "U002", sprite_x: 4, sprite_y: 3, name: "储钱罐", rarity: "稀有", type: "通用", edibility: INEDIBLE, eat_points: -2, discard_points: 0, role: ECONOMY, synergy_tags: ["通用", "经济", "销毁"], effect: { kind: "gold_economy", description: "弃掉结算 +3 金币；吃掉得 10 金币并永久销毁", discard_add_gold: 3, eat_destroy_add_gold: 10 } }),
+  card({ id: "U002", sprite_x: 4, sprite_y: 3, name: "储钱罐", rarity: "稀有", min_shop_round: 4, max_copies: 1, type: "通用", edibility: INEDIBLE, eat_points: -2, discard_points: 0, role: ECONOMY, synergy_tags: ["通用", "经济", "销毁", "唯一"], effect: { kind: "gold_economy", description: "每轮首次弃掉结算 +3 金币；吃掉得 10 金币并永久销毁", discard_add_gold: 3, eat_destroy_add_gold: 10, once_per_round: true } }),
   card({ id: "U003", sprite_x: 2, sprite_y: 1, sprite_hue: 90, name: "榨汁机", rarity: "罕见", type: "通用", edibility: INEDIBLE, eat_points: -2, discard_points: 1, role: SETUP, synergy_tags: ["通用", "水果"], effect: { kind: "buff_next_action", description: "接下来 3 张水果吃分 ×2", trigger_action: "discard", action: "eat", target_type: "水果", count: 3, multiplier: 2 } }),
   card({ id: "U004", sprite_x: 1, sprite_y: 1, sprite_hue: 105, name: "堆肥箱", rarity: "稀有", type: "通用", edibility: INEDIBLE, eat_points: -3, discard_points: 1, role: PAYOFF, synergy_tags: ["通用", "弃食", "历史"], effect: { kind: "scale_by_history", description: "弃掉时，此前每弃一张可食用牌 +2", trigger_action: "discard", history_action: "discard", target_edibility: EDIBLE, multiplier: 2 } }),
   card({ id: "U005", sprite_x: 3, sprite_y: 2, sprite_hue: 170, name: "磁带复制机", rarity: "稀有", type: "通用", edibility: INEDIBLE, eat_points: -4, discard_points: 1, role: PAYOFF, synergy_tags: ["通用", "复制", "顺序"], effect: { kind: "copy_previous_score", description: "弃掉时，复制上一张牌的正得分", trigger_action: "discard" } }),
-  card({ id: "U006", sprite_x: 3, sprite_y: 3, sprite_hue: 280, name: "黄金门票", rarity: "传奇", type: "通用", edibility: INEDIBLE, eat_points: -5, discard_points: 0, role: SACRIFICE, synergy_tags: ["通用", "牺牲", "经济"], effect: { kind: "shop_discount", description: "硬吃 -5；随后商店价格 -5", trigger_action: "eat", discount: 5 } }),
+  card({ id: "U006", sprite_x: 3, sprite_y: 3, sprite_hue: 280, name: "黄金门票", rarity: "传奇", min_shop_round: 8, max_copies: 1, type: "通用", edibility: INEDIBLE, eat_points: -5, discard_points: 0, role: SACRIFICE, synergy_tags: ["通用", "牺牲", "经济", "唯一"], effect: { kind: "shop_discount", description: "每轮首次硬吃 -5；随后商店价格 -5", trigger_action: "eat", discount: 5, once_per_round: true } }),
+
+  // Expansion: discard economy, small-deck loops, and positional engines.
+  card({ id: "F009", name: "发芽种子", rarity: "罕见", max_copies: 1, type: "水果", edibility: EDIBLE, eat_points: 0, discard_points: -1, role: ENGINE, synergy_tags: ["水果", "成长", "重洗"], effect: { kind: "permanent_growth_eat", description: "每次吃掉，自身吃分永久 +1；重洗后可再次成长", amount: 1 } }),
+  card({ id: "C007", name: "冥王星", rarity: "罕见", type: "星体", edibility: INEDIBLE, eat_points: -5, discard_points: 2, role: PAYOFF, synergy_tags: ["星体", "末位", "位置"], effect: { kind: "bonus_if_position", description: "作为当前牌堆最后一张弃掉时额外 +8", trigger_action: "discard", position: "last", bonus: 8 } }),
+  card({ id: "A006", name: "噬牌虎", rarity: "稀有", min_shop_round: 5, max_copies: 1, type: "动物", edibility: INEDIBLE, eat_points: -7, discard_points: 1, role: ENGINE, synergy_tags: ["动物", "吞噬", "位置", "成长"], effect: { kind: "consume_next_card", description: "弃掉时永久吞掉下一张牌，并永久增加自身弃分", trigger_action: "discard", max_growth: 6 } }),
+  card({ id: "U007", name: "收银台", rarity: "普通", max_copies: 2, type: "通用", edibility: INEDIBLE, eat_points: -1, discard_points: -2, role: ECONOMY, synergy_tags: ["通用", "经济", "销毁"], effect: { kind: "shop_free_reroll_destroy", description: "弃掉 -2；永久销毁自身，使随后商店获得 1 次免费刷新", trigger_action: "discard", count: 1 } }),
+  card({ id: "P006", name: "拾荒者", rarity: "罕见", min_shop_round: 3, max_copies: 1, type: "人物", edibility: INEDIBLE, eat_points: -4, discard_points: 1, role: ECONOMY, synergy_tags: ["人物", "弃牌", "经济", "唯一"], effect: { kind: "gold_on_discard_count", description: "弃掉时，此前每弃 3 张牌结算金币 +2，最多 +6", trigger_action: "discard", count: 3, gold: 2, max_triggers: 3 } }),
+  card({ id: "U008", name: "袖珍洗牌机", rarity: "罕见", max_copies: 2, type: "通用", edibility: INEDIBLE, eat_points: -3, discard_points: 0, role: ENGINE, synergy_tags: ["通用", "重洗", "销毁"], effect: { kind: "gain_reshuffle_charge_destroy", description: "牌组不超过 10 张时，弃掉并永久销毁：本轮重洗次数 +1", trigger_action: "discard", max_deck_size: 10, count: 1 } }),
+  card({ id: "D007", name: "夹心饼干", rarity: "稀有", min_shop_round: 4, type: "甜点", edibility: EDIBLE, eat_points: 2, discard_points: -1, role: PAYOFF, synergy_tags: ["甜点", "相邻", "位置"], effect: { kind: "bonus_if_neighbors", description: "前后相邻牌都是甜点时，吃下额外 +7", trigger_action: "eat", target_type: "甜点", bonus: 7 } }),
+  card({ id: "C008", name: "双子星", rarity: "稀有", min_shop_round: 4, type: "星体", edibility: INEDIBLE, eat_points: -6, discard_points: 2, role: PAYOFF, synergy_tags: ["星体", "相邻", "位置"], effect: { kind: "bonus_if_neighbors", description: "前后相邻牌都是星体时，弃掉额外 +8", trigger_action: "discard", target_type: "星体", bonus: 8 } }),
+  card({ id: "U009", name: "节拍器", rarity: "罕见", type: "通用", edibility: INEDIBLE, eat_points: -3, discard_points: 1, role: PAYOFF, synergy_tags: ["通用", "交替", "节奏"], effect: { kind: "bonus_if_previous", description: "紧接吃牌后弃掉时额外 +3", trigger_action: "discard", sequence: "actions", previous_action: "eat", bonus: 3 } }),
+];
+
+const QUEST_CARD_DEFS = [
+  card({ id: "Q001", name: "虚空牌", rarity: "诅咒", type: "虚空", edibility: INEDIBLE, eat_points: 0, discard_points: 0, role: SACRIFICE, synergy_tags: ["虚空", "任务", "负面"], effect: null }),
 ];
 
 function cloneCard(source) {
@@ -135,7 +152,7 @@ export const CARD_TYPES = Object.freeze({
   CELESTIAL: "星体", PERSON: "人物", ANIMAL: "动物", UTILITY: "通用",
 });
 
-export const CARD_LIBRARY = Object.freeze([...BASE_CARD_DEFS, ...SHOP_CARD_DEFS].reduce((library, source) => {
+export const CARD_LIBRARY = Object.freeze([...BASE_CARD_DEFS, ...SHOP_CARD_DEFS, ...QUEST_CARD_DEFS].reduce((library, source) => {
   library[source.id] = Object.freeze(cloneCard(source));
   return library;
 }, {}));

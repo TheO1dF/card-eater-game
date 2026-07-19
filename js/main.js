@@ -1,19 +1,22 @@
-import { GAME_CONFIG } from "./config.js";
+import { GAME_CONFIG, isQuestRound } from "./config.js";
 import { GAME_PHASES, createInitialPlayerState, resetRoundState, transitionPhase } from "./state.js";
 import { createGestureController } from "./gesture.js";
 import { createRoundEngine } from "./engine.js";
 import { createShopService } from "./shop.js";
 import { randomDraftRules } from "./rules.js";
+import { applyRoundItemSetup } from "./items.js";
+import { applyQuestRoundPenalty, finalizeQuest, randomDraftQuests, selectQuest } from "./quests.js";
 import { createUI } from "./ui.js";
 import { browserPlatform } from "./platform.js";
 import { initAudio, playSound, toggleBGM } from "./audio.js";
+import { safeAdd } from "./numbers.js";
 
 const state = createInitialPlayerState({ create_id: browserPlatform.create_id });
 const engine = createRoundEngine();
 const shopService = createShopService({ random: browserPlatform.random, create_id: browserPlatform.create_id });
 const ui = createUI(document);
 
-let shopBuffer = [];
+let shopBuffer = null;
 let actionLocked = true;
 let streak = { action: null, count: 0 };
 let soundEnabled = true;
@@ -56,7 +59,8 @@ function completeRound() {
   const result = engine.finalizeRound(state);
   const baseGold = engine.getGoldReward(state);
   result.gold_reward = baseGold;
-  state.gold += baseGold;
+  state.gold = safeAdd(state.gold, baseGold);
+  result.quest_result = finalizeQuest(state, result);
   refreshTable();
 
   const milestone = engine.levelProgressCheck(state);
@@ -76,7 +80,7 @@ function completeRound() {
     });
   }
 
-  if (!outcome && shopBuffer.length === 0) {
+  if (!outcome && shopBuffer === null) {
     shopBuffer = shopService.getShopCards(state);
     // Warm the shop art while the summary is visible, but never make game
     // progression depend on image decoding. Safari may leave decode() pending
@@ -98,10 +102,12 @@ function completeRound() {
 function resolveForcedDiscards() {
   if (!state.round.force_discard_remaining) return;
   state.round.force_discard_remaining = false;
-  while (state.round.draw_pile.length > 0) {
+  while (state.round.draw_pile.length > 0 && state.round.actions.length < GAME_CONFIG.max_actions_per_round) {
     const forcedCard = state.round.draw_pile.pop();
     engine.recordAction(state, "discard", forcedCard);
+    if (state.deck.some((item) => item.uuid === forcedCard.uuid)) state.round.spent_pile.push(forcedCard);
   }
+  if (state.round.draw_pile.length > 0) state.round.draw_pile.length = 0;
 }
 
 function handleAction(action, card) {
@@ -119,6 +125,12 @@ function handleAction(action, card) {
   const hitCount = updateStreak(action);
   const entry = engine.recordAction(state, action, card);
   state.round.draw_pile.pop();
+  if (state.deck.some((item) => item.uuid === card.uuid)) state.round.spent_pile.push(card);
+  if (state.round.consume_next_uuid) {
+    const consumed = state.round.draw_pile.at(-1);
+    if (consumed?.uuid === state.round.consume_next_uuid) state.round.draw_pile.pop();
+    state.round.consume_next_uuid = null;
+  }
 
   ui.showFloatingScore(entry.points, action, hitCount);
   if (entry.effect_triggered) ui.showEffectFlash(entry.effect_triggered);
@@ -132,6 +144,10 @@ function handleAction(action, card) {
     if (soundEnabled) playSound("error", 1);
   }
 
+  if (state.round.actions.length >= GAME_CONFIG.max_actions_per_round) {
+    state.round.force_discard_remaining = true;
+    ui.showEffectFlash("本轮行动已达安全上限，剩余牌自动清空");
+  }
   resolveForcedDiscards();
   ui.setGestureProgress({ progress: 0, direction: null });
   if (state.round.draw_pile.length === 0) completeRound();
@@ -151,7 +167,9 @@ const gesture = createGestureController({
 function prepareRound() {
   resetRoundState(state);
   state.round.draw_pile = shuffle(state.deck.map((card) => ({ ...card, effect: card.effect ? { ...card.effect } : null })));
-  shopBuffer = [];
+  applyRoundItemSetup(state);
+  applyQuestRoundPenalty(state, browserPlatform.random);
+  shopBuffer = null;
   streak = { action: null, count: 0 };
   actionLocked = true;
   ui.renderTimer(0);
@@ -168,21 +186,44 @@ function enterRuleDraft() {
   if (state.phase === GAME_PHASES.INIT || state.phase === GAME_PHASES.NEXT_ROUND) {
     transitionPhase(state, GAME_PHASES.RULE_DRAFT, { round: state.current_round });
   }
+  if (state.active_quest?.round < state.current_round) state.active_quest = null;
   actionLocked = true;
-  const options = randomDraftRules(GAME_CONFIG.draft_size, state.active_rules, browserPlatform.random, state.deck, state.current_round);
+  const canReshuffle = state.items.some((item) => item.effect?.kind === "round_reshuffle_charge")
+    || state.deck.some((card) => card.effect?.kind === "gain_reshuffle_charge_destroy");
+  const options = randomDraftRules(
+    GAME_CONFIG.draft_size,
+    state.active_rules,
+    browserPlatform.random,
+    state.deck,
+    state.current_round,
+    { can_reshuffle: canReshuffle },
+  );
   ui.renderHud(state);
   ui.openRuleDraft(options, state, (rule) => {
     if (state.phase !== GAME_PHASES.RULE_DRAFT) return;
     state.active_rules.push({ ...rule });
     state.rule_history.push({ id: rule.id, name: rule.name, round: state.current_round });
     ui.closeRuleDraft();
+    if (isQuestRound(state.current_round) && state.active_quest?.round !== state.current_round) enterQuestDraft();
+    else prepareRound();
+  });
+}
+
+function enterQuestDraft() {
+  transitionPhase(state, GAME_PHASES.QUEST_DRAFT, { round: state.current_round });
+  actionLocked = true;
+  const options = randomDraftQuests(GAME_CONFIG.draft_size, state, browserPlatform.random);
+  ui.openQuestDraft(options, state, (quest) => {
+    if (state.phase !== GAME_PHASES.QUEST_DRAFT) return;
+    selectQuest(state, quest, browserPlatform.create_id);
+    ui.closeQuestDraft();
     prepareRound();
   });
 }
 
 function enterShop() {
   if (state.phase !== GAME_PHASES.SHOP) return;
-  if (shopBuffer.length === 0) shopBuffer = shopService.getShopCards(state);
+  if (shopBuffer === null) shopBuffer = shopService.getShopCards(state);
   ui.openShop(
     state,
     shopBuffer,
@@ -205,6 +246,17 @@ function enterShop() {
       enterShop();
     },
     () => {
+      const reroll = shopService.rerollShop(state);
+      if (!reroll.success) {
+        ui.setShopMessage(`金币不足，刷新需要 ${reroll.cost} 金币。`, "error");
+      } else {
+        shopBuffer = reroll.cards;
+        ui.setShopMessage(reroll.free ? "使用免费刷新机会。" : `支付 ${reroll.cost} 金币刷新商品。`, "success");
+        void ui.preloadCardArt(shopBuffer);
+      }
+      enterShop();
+    },
+    () => {
       if (state.phase !== GAME_PHASES.SHOP) return;
       ui.closeShop();
       transitionPhase(state, GAME_PHASES.NEXT_ROUND, { round: state.current_round });
@@ -212,6 +264,23 @@ function enterShop() {
       enterRuleDraft();
     },
   );
+}
+
+function tryReshuffle() {
+  if (actionLocked || state.phase !== GAME_PHASES.PLAYING) return;
+  const canUse = state.deck.length <= GAME_CONFIG.reshuffle_max_deck_size
+    && state.round.reshuffle_charges > 0
+    && state.round.spent_pile.length > 0;
+  if (!canUse) return;
+  const replayable = state.round.spent_pile.filter((card) => state.deck.some((item) => item.uuid === card.uuid));
+  if (replayable.length === 0) return;
+  state.round.reshuffle_charges -= 1;
+  state.round.reshuffle_count += 1;
+  state.round.draw_pile = shuffle([...state.round.draw_pile, ...replayable]);
+  state.round.spent_pile = [];
+  streak = { action: null, count: 0 };
+  ui.showEffectFlash(`重洗启动 · 第 ${state.round.reshuffle_count} 次循环`);
+  refreshTable();
 }
 
 function tryCommit(action) {
@@ -222,6 +291,7 @@ function tryCommit(action) {
 ui.bindControls({
   onEat: () => tryCommit("eat"),
   onDiscard: () => tryCommit("discard"),
+  onReshuffle: tryReshuffle,
   onSound: () => {
     soundEnabled = !soundEnabled;
     if (soundEnabled) {

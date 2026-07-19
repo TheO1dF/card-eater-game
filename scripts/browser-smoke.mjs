@@ -58,7 +58,9 @@ async function waitFor(expression, timeout = 8000) {
 
 async function clickElement(selector) {
   const point = await evaluate(`(() => {
-    const rect = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect();
+    const element = document.querySelector(${JSON.stringify(selector)});
+    element?.scrollIntoView({ block: "center", inline: "center" });
+    const rect = element?.getBoundingClientRect();
     return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
   })()`);
   if (!point) throw new Error(`Element not found: ${selector}`);
@@ -119,6 +121,12 @@ for (const viewport of [
   await capture(`${viewport.name}-draft`);
   const draftCount = await evaluate('document.querySelectorAll(".rule-card").length');
   const audioBeforeRule = await evaluate('(async () => (await import("./js/audio.js")).getAudioStatus())()');
+  const audioOverflowSafe = await evaluate(`(async () => {
+    const audio = await import("./js/audio.js");
+    audio.playSound("eat", Number.MAX_VALUE);
+    audio.playSound("effect", Number.POSITIVE_INFINITY);
+    return true;
+  })()`);
   await clickElement(".rule-card");
   await wait(2200);
   await capture(`${viewport.name}-playing`);
@@ -200,9 +208,58 @@ for (const viewport of [
       secondRound.third_draft_visible = true;
       secondRound.third_draft_count = await evaluate('document.querySelectorAll(".rule-card").length');
       await capture(`${viewport.name}-round-3-draft`);
+      await clickElement(".rule-card");
+      await waitFor('document.querySelector("#questDraft")?.classList.contains("show")');
+      await wait(180);
+      secondRound.quest_draft_count = await evaluate('document.querySelectorAll(".quest-card").length');
+      secondRound.quest_round = await evaluate('document.querySelector("#questRoundValue")?.textContent');
+      await capture(`${viewport.name}-round-3-quest`);
+      await clickElement(".quest-card");
+      await wait(2200);
+      secondRound.third_phase = await evaluate('document.querySelector("#phaseValue")?.textContent');
+      secondRound.third_start_remaining = await evaluate('Number(document.querySelector("#remainingValue")?.textContent)');
+      await capture(`${viewport.name}-round-3-playing`);
+      let thirdActions = 0;
+      while (thirdActions < 30) {
+        const screen = await evaluate(`(() => {
+          if (document.querySelector("#roundSummary")?.classList.contains("show")) return { summary: true };
+          const card = document.querySelector(".game-card.is-active");
+          return card ? { summary: false, edible: card.classList.contains("card-edible") } : null;
+        })()`);
+        if (!screen || screen.summary) break;
+        if (viewport.mobile) await swipeElement(".game-card.is-active", screen.edible ? "eat" : "discard");
+        else await clickElement(screen.edible ? "#eatButton" : "#discardButton");
+        thirdActions += 1;
+        await wait(230);
+      }
+      await wait(300);
+      secondRound.third_actions = thirdActions;
+      secondRound.third_summary_visible = await evaluate('document.querySelector("#roundSummary")?.classList.contains("show")');
+      secondRound.third_quest_result = await evaluate('document.querySelector("#summaryQuestResult")?.textContent');
+      secondRound.third_score_is_finite = await evaluate(`(() => {
+        const text = document.querySelector("#scoreValue")?.textContent ?? "";
+        return !/NaN|Infinity/.test(text);
+      })()`);
+      await capture(`${viewport.name}-round-3-summary`);
+      if (secondRound.third_summary_visible) {
+        await clickElement("#summaryContinueBtn");
+        await waitFor('document.querySelector("#shopPanel")?.classList.contains("show")');
+        secondRound.third_shop_offer_count = await evaluate('document.querySelectorAll(".shop-card").length');
+        secondRound.reroll_gold_before = await evaluate('Number(document.querySelector("#shopGold")?.textContent)');
+        secondRound.reroll_label_before = await evaluate('document.querySelector("#shopReroll")?.textContent');
+        await clickElement("#shopReroll");
+        await wait(250);
+        secondRound.reroll_gold_after = await evaluate('Number(document.querySelector("#shopGold")?.textContent)');
+        secondRound.reroll_label_after = await evaluate('document.querySelector("#shopReroll")?.textContent');
+        secondRound.reroll_offer_count = await evaluate('document.querySelectorAll(".shop-card").length');
+        await capture(`${viewport.name}-round-3-shop-rerolled`);
+        await clickElement("#shopContinue");
+        await waitFor('document.querySelector("#ruleDraft")?.classList.contains("show") && document.querySelector("#draftRoundValue")?.textContent === "04"');
+        secondRound.fourth_draft_visible = true;
+      }
     }
   }
-  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, ...state, actions, ...roundComplete, ...shopState, ...secondRound });
+  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, audio_overflow_safe: audioOverflowSafe, ...state, actions, ...roundComplete, ...shopState, ...secondRound });
 }
 
 socket.close();

@@ -11,6 +11,7 @@ export function playSound(type, streak) {
   if (!audioCtx) initAudio();
   if (audioCtx.state === 'suspended') audioCtx.resume();
   
+  const safeStreak = Math.max(1, Math.min(24, Number.isFinite(Number(streak)) ? Number(streak) : 1));
   const osc = audioCtx.createOscillator();
   const gainNode = audioCtx.createGain();
   
@@ -22,7 +23,7 @@ export function playSound(type, streak) {
   if (type === 'eat') {
     // 吃牌音效：清脆的滴答声，随着连续吃，音调越来越高 (半音阶上升)
     osc.type = 'sine';
-    const baseFreq = 440 * Math.pow(1.06, streak - 1); // 每次升高半音
+    const baseFreq = Math.min(8000, 440 * Math.pow(1.06, safeStreak - 1)); // 有上限的半音阶，避免长局 AudioParam 溢出
     osc.frequency.setValueAtTime(baseFreq, now);
     osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, now + 0.1);
     
@@ -36,7 +37,7 @@ export function playSound(type, streak) {
   else if (type === 'discard') {
     // 弃牌音效：短促的低频风声，连续弃牌也会有微妙的变化
     osc.type = 'triangle';
-    const baseFreq = 200 + (streak * 10);
+    const baseFreq = 200 + (safeStreak * 10);
     osc.frequency.setValueAtTime(baseFreq, now);
     osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.5, now + 0.15);
     
@@ -50,7 +51,7 @@ export function playSound(type, streak) {
   else if (type === 'effect') {
     // 效果触发叠一层短促高音，让“启动 → 收割”在听觉上也有确认感。
     osc.type = 'square';
-    const baseFreq = 660 * Math.pow(1.035, Math.min(streak, 8) - 1);
+    const baseFreq = Math.min(8000, 660 * Math.pow(1.035, Math.min(safeStreak, 8) - 1));
     osc.frequency.setValueAtTime(baseFreq, now);
     osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.32, now + 0.12);
 

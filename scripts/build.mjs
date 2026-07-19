@@ -14,10 +14,11 @@ await Promise.all([
   cp(resolve(root, "js"), resolve(dist, "js"), { recursive: true }),
   cp(resolve(root, "assets"), resolve(dist, "assets"), {
     recursive: true,
-    filter: (source) => !source.endsWith("card-sprites-chroma.png"),
+    // PNG sheets are editable source art only. Runtime uses normalized WebP
+    // cards/atlases, so omitting all PNG files keeps Pages uploads lean.
+    filter: (source) => !source.toLowerCase().endsWith(".png"),
   }),
   cp(resolve(root, "_headers"), resolve(dist, "_headers")),
 ]);
 
 console.log(`Built static site: ${dist}`);
-

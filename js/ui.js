@@ -1,17 +1,20 @@
 import { GAME_CONFIG, getNextMilestone } from "./config.js";
+import { getItemById } from "./items.js";
+import { formatScore } from "./numbers.js";
+import { getQuestRequirement, getQuestTarget } from "./quests.js";
 
 const PHASE_LABELS = Object.freeze({
-  Init: "准备中", RuleDraft: "规则选择", Playing: "出牌中", Scoring: "结算中",
+  Init: "准备中", RuleDraft: "规则选择", QuestDraft: "任务选择", Playing: "出牌中", Scoring: "结算中",
   Shop: "商店", NextRound: "下一轮", GameOver: "本局结束",
 });
 
-const RARITY_CLASS = Object.freeze({ "普通": "common", "罕见": "uncommon", "稀有": "rare", "传奇": "legendary" });
+const RARITY_CLASS = Object.freeze({ "普通": "common", "罕见": "uncommon", "稀有": "rare", "传奇": "legendary", "诅咒": "curse" });
 const EDIBILITY_LABEL = Object.freeze({ edible: "可食用", inedible: "不可食用" });
 const ROLE_LABEL = Object.freeze({ baseline: "基础", setup: "启动", payoff: "收割", sacrifice: "牺牲", engine: "成长引擎", economy: "经济" });
-const CARD_ART_VERSION = 5;
-const CARD_ATLAS_VERSION = 7;
+const CARD_ART_VERSION = 6;
+const CARD_ATLAS_VERSION = 8;
 const cardArtCache = new Map();
-const signed = (value) => value > 0 ? `+${value}` : String(value);
+const signed = (value) => value > 0 ? `+${formatScore(value)}` : formatScore(value);
 const cardArtUrl = (card) => card.runtime_art_mode === "atlas"
   ? `./assets/${card.runtime_atlas}?v=${CARD_ATLAS_VERSION}`
   : `./assets/${card.art_file}?v=${CARD_ART_VERSION}`;
@@ -67,6 +70,37 @@ function spriteStyle(card) {
 
 function setText(node, value) {
   if (node) node.textContent = String(value);
+}
+
+function metaStyle(entry) {
+  const x = entry.icon_x * 100 / Math.max(1, entry.icon_columns - 1);
+  const y = entry.icon_y * 100 / Math.max(1, entry.icon_rows - 1);
+  return `--meta-x:${x}%;--meta-y:${y}%;`;
+}
+
+function itemElement(entry) {
+  const node = document.createElement("span");
+  node.className = "item-chip";
+  node.title = `${entry.name}：${entry.description}`;
+  node.innerHTML = `<span class="meta-sprite" style="${metaStyle(entry)}"></span>`;
+  return node;
+}
+
+function questElement(entry, state, onChoose) {
+  const target = getQuestTarget(state.current_round, entry.condition.target_multiplier ?? 1);
+  const displayQuest = { ...entry, target };
+  const reward = entry.reward.kind === "item" ? getItemById(entry.reward.item_id) : null;
+  const button = document.createElement("button");
+  button.className = "quest-card";
+  button.type = "button";
+  button.innerHTML = `
+    <span class="quest-card-head"><i class="quest-card-icon meta-sprite" style="${metaStyle(entry)}"></i><span><small>${entry.risk}</small><strong>${entry.name}</strong></span></span>
+    <span class="quest-block quest-penalty"><b>代价</b><span>${entry.penalty.description}</span></span>
+    <span class="quest-block quest-requirement"><b>本轮要求</b><span>${getQuestRequirement(displayQuest)}</span></span>
+    <span class="quest-reward">永久奖励 · ${reward ? `${reward.name}：${reward.description}` : entry.reward.name}</span>
+  `;
+  button.addEventListener("click", () => onChoose(entry), { once: true });
+  return button;
 }
 
 function cardElement(card, active, depth) {
@@ -130,17 +164,39 @@ export function createUI(root) {
     gold: get("#goldValue"), remaining: get("#remainingValue"), timer: get("#timerValue"), phase: get("#phaseValue"),
     eatZone: get("#eatZone"), discardZone: get("#discardZone"), swipeStatus: get("#swipeStatus"),
     draft: get("#ruleDraft"), draftList: get("#ruleDraftList"), summary: get("#roundSummary"),
+    quest: get("#questDraft"), questList: get("#questDraftList"),
     shop: get("#shopPanel"), shopOffers: get("#shopOfferList"), shopDeck: get("#shopDeckList"), welcome: get("#welcomeOverlay"),
   };
 
+  function renderItems(state) {
+    const tray = get("#itemTray");
+    if (!tray) return;
+    if (state.items.length === 0) tray.innerHTML = '<span class="item-empty">尚未获得</span>';
+    else tray.replaceChildren(...state.items.map(itemElement));
+  }
+
   function renderHud(state) {
     setText(nodes.round, `${state.current_round}/${GAME_CONFIG.total_rounds}`);
-    setText(nodes.score, state.total_score);
-    setText(nodes.gold, state.gold);
+    setText(nodes.score, formatScore(state.total_score));
+    nodes.score.title = String(state.total_score);
+    setText(nodes.gold, formatScore(state.gold));
     setText(nodes.remaining, state.round.draw_pile.length);
     setText(nodes.phase, PHASE_LABELS[state.phase] ?? state.phase);
-    setText(get("#shopGold"), state.gold);
+    setText(get("#shopGold"), formatScore(state.gold));
     setText(get("#shopDeleteCost"), state.remove_card_cost);
+    setText(get("#reshuffleCount"), state.round.reshuffle_charges);
+    const reshuffleButton = get("#reshuffleButton");
+    if (reshuffleButton) {
+      const canReshuffle = state.phase === "Playing"
+        && state.deck.length <= GAME_CONFIG.reshuffle_max_deck_size
+        && state.round.reshuffle_charges > 0
+        && state.round.spent_pile.length > 0;
+      reshuffleButton.disabled = !canReshuffle;
+      reshuffleButton.title = state.deck.length > GAME_CONFIG.reshuffle_max_deck_size
+        ? `牌组超过 ${GAME_CONFIG.reshuffle_max_deck_size} 张，无法重洗`
+        : `将 ${state.round.spent_pile.length} 张已处理牌洗回牌堆`;
+    }
+    renderItems(state);
   }
 
   function setGestureProgress({ progress = 0, direction = null }) {
@@ -182,10 +238,11 @@ export function createUI(root) {
       if (activeElement && activeCard) gesture.bind(activeElement, activeCard);
     },
     setGestureProgress,
-    bindControls({ onEat, onDiscard, onSound }) {
+    bindControls({ onEat, onDiscard, onReshuffle, onSound }) {
       get("#eatButton")?.addEventListener("click", onEat);
       get("#discardButton")?.addEventListener("click", onDiscard);
       get("#soundButton")?.addEventListener("click", onSound);
+      get("#reshuffleButton")?.addEventListener("click", onReshuffle);
     },
     setSoundState(enabled) {
       const button = get("#soundButton");
@@ -201,7 +258,7 @@ export function createUI(root) {
       floater.className = `score-floater ${points < 0 ? "negative" : action}`;
       floater.style.setProperty("--score-scale", Math.min(1 + Math.max(0, streak - 1) * 0.12, 1.7));
       const comboLabel = streak >= 8 ? "OVERDRIVE" : streak >= 5 ? "FEVER" : streak >= 3 ? "HIT" : "";
-      floater.textContent = `${signed(points)}${comboLabel ? ` · ${streak} ${comboLabel}` : ""}`;
+      floater.textContent = `${points > 0 ? "+" : ""}${formatScore(points)}${comboLabel ? ` · ${streak} ${comboLabel}` : ""}`;
       stage.appendChild(floater);
       floater.addEventListener("animationend", () => floater.remove(), { once: true });
     },
@@ -228,6 +285,12 @@ export function createUI(root) {
       nodes.draft.classList.add("show");
     },
     closeRuleDraft() { nodes.draft.classList.remove("show"); },
+    openQuestDraft(options, state, onChoose) {
+      setText(get("#questRoundValue"), String(state.current_round).padStart(2, "0"));
+      nodes.questList.replaceChildren(...options.map((entry) => questElement(entry, state, onChoose)));
+      nodes.quest.classList.add("show");
+    },
+    closeQuestDraft() { nodes.quest.classList.remove("show"); },
     showCountdown(onComplete) {
       const overlay = get("#countdownOverlay");
       const text = get("#countdownText");
@@ -262,7 +325,7 @@ export function createUI(root) {
         get("#summaryMilestoneRounds"),
         roundsRemaining === 0 ? `本轮为第 ${milestone.round} 轮目标结算` : `距离第 ${milestone.round} 轮目标还有 ${roundsRemaining} 轮`,
       );
-      setText(get("#summaryMilestoneScore"), `累计 ${state.total_score} / 目标 ${milestone.target} 分`);
+      setText(get("#summaryMilestoneScore"), `累计 ${formatScore(state.total_score)} / 目标 ${formatScore(milestone.target)} 分`);
       get("#summaryMilestoneFill")?.style.setProperty("width", `${milestoneProgress}%`);
 
       list.innerHTML = result.breakdown.map((item) => `<div class="receipt-line ${item.kind ?? ""}"><span>${item.label}</span><b>${item.text}</b></div>`).join("");
@@ -271,17 +334,28 @@ export function createUI(root) {
         .map((item) => `<span class="rule-result ${item.achieved ? "achieved" : "missed"}">${item.achieved ? "✓" : "·"} ${item.name}</span>`)
         .join("");
       get("#activeRulesList").innerHTML = state.active_rules.map((rule) => `<li><b>${rule.name}</b><span>${rule.description}</span></li>`).join("");
+      const questResult = get("#summaryQuestResult");
+      if (result.quest_result) {
+        questResult.hidden = false;
+        questResult.className = `quest-result ${result.quest_result.completed ? "success" : "failed"}`;
+        questResult.textContent = result.quest_result.completed
+          ? `✓ 任务完成 · ${result.quest_result.reward}`
+          : `× 任务失败 · ${result.quest_result.requirement}`;
+      } else {
+        questResult.hidden = true;
+        questResult.className = "quest-result";
+      }
 
       if (outcome === "victory") {
         eyebrow.textContent = "15 ROUNDS COMPLETE";
         title.textContent = "通关成功！";
-        tip.textContent = `最终得分 ${state.total_score}，记录已保存到本机。`;
+        tip.textContent = `最终得分 ${formatScore(state.total_score)}，记录已保存到本机。`;
         button.textContent = "再来一局";
         button.classList.add("danger-action");
       } else if (outcome === "defeat") {
         eyebrow.textContent = "TARGET MISSED";
         title.textContent = "挑战失败";
-        tip.textContent = `本阶段需要 ${getNextMilestone(state.current_round).target} 分，当前为 ${state.total_score} 分。`;
+        tip.textContent = `本阶段需要 ${formatScore(getNextMilestone(state.current_round).target)} 分，当前为 ${formatScore(state.total_score)} 分。`;
         button.textContent = "重新开始";
         button.classList.add("danger-action");
       } else {
@@ -308,11 +382,20 @@ export function createUI(root) {
       nodes.summary.classList.add("show");
     },
     hideRoundSummary() { nodes.summary.classList.remove("show"); },
-    openShop(state, cards, onBuy, onRemove, onContinue) {
+    openShop(state, cards, onBuy, onRemove, onReroll, onContinue) {
       renderHud(state);
       nodes.shopOffers.replaceChildren(...cards.map((card) => shopCardElement(card, onBuy)));
       if (cards.length === 0) nodes.shopOffers.innerHTML = '<p class="empty-shop">商品售罄</p>';
       nodes.shopDeck.replaceChildren(...state.deck.map((card) => deckChipElement(card, state.remove_card_cost, onRemove)));
+      const rerollCost = state.round.shop_free_rerolls > 0
+        ? 0
+        : GAME_CONFIG.shop_reroll_base_cost + state.round.shop_reroll_count * GAME_CONFIG.shop_reroll_cost_step;
+      const rerollButton = get("#shopReroll");
+      rerollButton.textContent = rerollCost === 0
+        ? `免费刷新 · 剩余 ${state.round.shop_free_rerolls}`
+        : `刷新商品 · $${rerollCost}`;
+      rerollButton.disabled = rerollCost > 0 && state.gold < rerollCost;
+      rerollButton.onclick = onReroll;
       get("#shopContinue").onclick = onContinue;
       nodes.shop.classList.add("show");
     },

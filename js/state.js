@@ -4,6 +4,7 @@ import { createInitialDeck } from "./data.js";
 export const GAME_PHASES = Object.freeze({
   INIT: "Init",
   RULE_DRAFT: "RuleDraft",
+  QUEST_DRAFT: "QuestDraft",
   PLAYING: "Playing",
   SCORING: "Scoring",
   SHOP: "Shop",
@@ -16,7 +17,8 @@ export const GAME_STATES = GAME_PHASES;
 
 const PHASE_TRANSITIONS = Object.freeze({
   [GAME_PHASES.INIT]: [GAME_PHASES.RULE_DRAFT],
-  [GAME_PHASES.RULE_DRAFT]: [GAME_PHASES.PLAYING],
+  [GAME_PHASES.RULE_DRAFT]: [GAME_PHASES.QUEST_DRAFT, GAME_PHASES.PLAYING],
+  [GAME_PHASES.QUEST_DRAFT]: [GAME_PHASES.PLAYING],
   [GAME_PHASES.PLAYING]: [GAME_PHASES.SCORING],
   [GAME_PHASES.SCORING]: [GAME_PHASES.SHOP, GAME_PHASES.GAME_OVER],
   [GAME_PHASES.SHOP]: [GAME_PHASES.NEXT_ROUND],
@@ -30,6 +32,7 @@ export function createRoundState() {
     actions: [],
     eat_sequence: [],
     discard_sequence: [],
+    spent_pile: [],
     buffs: [],
     final_multipliers: [],
     started_at_ms: null,
@@ -37,6 +40,13 @@ export function createRoundState() {
     pending_gold_bonus: 0,
     force_discard_remaining: false,
     shop_discount: 0,
+    shop_reroll_count: 0,
+    shop_free_rerolls: 0,
+    reshuffle_charges: 0,
+    reshuffle_count: 0,
+    effect_trigger_counts: {},
+    consume_next_uuid: null,
+    quest_flat_modifier: 0,
   };
 }
 
@@ -51,6 +61,10 @@ export function createInitialPlayerState(options = {}) {
     deck: createInitialDeck({ create_id: createId }),
     active_rules: [],
     rule_history: [],
+    items: [],
+    active_quest: null,
+    quest_history: [],
+    permanent_multipliers: [],
     remove_card_cost: 0,
     remove_count: 0,
     outcome: null,

@@ -13,6 +13,7 @@ const sheets = [
   "card-sprites-set-3.png",
   "card-sprites-set-4.png",
   "card-sprites-set-5.png",
+  "card-sprites-set-6.png",
 ];
 
 const targets = await fetch(`http://127.0.0.1:${debugPort}/json/list`).then((response) => response.json());
@@ -76,7 +77,7 @@ const expression = `(async () => {
   const atlasColumns = 10;
   const atlas = document.createElement("canvas");
   atlas.width = atlasColumns * atlasCellSize;
-  atlas.height = 5 * atlasCellSize;
+  atlas.height = Math.ceil(Object.keys(CARD_LIBRARY).length / atlasColumns) * atlasCellSize;
   const atlasContext = atlas.getContext("2d", { alpha: true });
   atlasContext.imageSmoothingEnabled = false;
 
@@ -230,10 +231,50 @@ const expression = `(async () => {
     cardIndex += 1;
   }
   const atlasUrl = atlas.toDataURL("image/webp", quality);
+
+  const metaSource = new Image();
+  metaSource.src = new URL("assets/meta-atlas-source.png", location.href).href;
+  await metaSource.decode();
+  const metaColumns = 4;
+  const metaRows = 4;
+  const metaCellOutput = 128;
+  const metaAtlas = document.createElement("canvas");
+  metaAtlas.width = metaColumns * metaCellOutput;
+  metaAtlas.height = metaRows * metaCellOutput;
+  const metaContext = metaAtlas.getContext("2d", { alpha: true });
+  metaContext.imageSmoothingEnabled = false;
+  for (let metaY = 0; metaY < metaRows; metaY += 1) {
+    for (let metaX = 0; metaX < metaColumns; metaX += 1) {
+      const sourceX = Math.round(metaX * metaSource.naturalWidth / metaColumns);
+      const sourceY = Math.round(metaY * metaSource.naturalHeight / metaRows);
+      const sourceRight = Math.round((metaX + 1) * metaSource.naturalWidth / metaColumns);
+      const sourceBottom = Math.round((metaY + 1) * metaSource.naturalHeight / metaRows);
+      const rawMeta = document.createElement("canvas");
+      rawMeta.width = sourceRight - sourceX;
+      rawMeta.height = sourceBottom - sourceY;
+      const rawMetaContext = rawMeta.getContext("2d", { alpha: true });
+      rawMetaContext.imageSmoothingEnabled = false;
+      rawMetaContext.drawImage(
+        metaSource,
+        sourceX,
+        sourceY,
+        rawMeta.width,
+        rawMeta.height,
+        0,
+        0,
+        rawMeta.width,
+        rawMeta.height,
+      );
+      const normalizedMeta = normalizeCard(rawMeta, metaCellOutput);
+      metaContext.drawImage(normalizedMeta, metaX * metaCellOutput, metaY * metaCellOutput);
+    }
+  }
+  const metaUrl = metaAtlas.toDataURL("image/webp", quality);
   return {
     sheets: sheetOutput,
     cards: cardOutput,
     atlas: atlasUrl.slice(atlasUrl.indexOf(",") + 1),
+    meta: metaUrl.slice(metaUrl.indexOf(",") + 1),
   };
 })()`;
 
@@ -259,5 +300,7 @@ for (const item of result.result.value.cards) {
 }
 await writeFile(resolve(root, "assets", "cards-atlas.webp"), Buffer.from(result.result.value.atlas, "base64"));
 console.log("Exported runtime atlas -> cards-atlas.webp");
+await writeFile(resolve(root, "assets", "meta-atlas.webp"), Buffer.from(result.result.value.meta, "base64"));
+console.log("Exported UI icon atlas -> meta-atlas.webp");
 
 socket.close();
