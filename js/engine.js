@@ -2,7 +2,6 @@ import { GAME_CONFIG, getNextMilestone } from "./config.js";
 import { getCardById } from "./data.js";
 import { getItemFinalMultipliers, resolveItemActionEffects } from "./items.js";
 import { formatScore, safeAdd, safeMultiply, safeProduct } from "./numbers.js";
-import { getBaseGoldEconomy, getDeckPrecisionMultiplier } from "./deck-pressure.js";
 
 const ACTIONS = Object.freeze({ EAT: "eat", DISCARD: "discard" });
 
@@ -992,13 +991,9 @@ export function createRoundEngine() {
   function finalizeRound(state) {
     const cardScore = state.round.actions.reduce((sum, item) => safeAdd(sum, item.points), 0);
     const ruleResults = getRuleResults(state);
-    const precisionMultiplier = state.round.deck_size_at_start > 0
-      ? getDeckPrecisionMultiplier(state.round.deck_size_at_start)
-      : 1;
     const multipliers = [
       ...state.round.final_multipliers,
       ...getItemFinalMultipliers(state),
-      ...(precisionMultiplier > 1 ? [{ name: "构筑密度", multiplier: precisionMultiplier, source: "deck" }] : []),
       ...(state.permanent_multipliers ?? []).map((reward) => ({ name: reward.name, multiplier: reward.multiplier, source: "quest" })),
       ...ruleResults
         .filter((result) => result.achieved && result.multiplier !== 1)
@@ -1028,9 +1023,7 @@ export function createRoundEngine() {
           ? "道具"
           : item.source === "quest"
             ? "任务"
-            : item.source === "deck"
-              ? "牌组"
-              : "规则";
+            : "规则";
         breakdown.push({ label: `${sourceLabel} · ${item.name}`, text: `×${item.multiplier}`, kind: "rule" });
       });
     }
@@ -1055,18 +1048,12 @@ export function createRoundEngine() {
   }
 
   function getGoldReward(state) {
-    return getGoldEconomy(state).net;
-  }
-
-  function getGoldEconomy(state) {
-    const deckSize = state.round.deck_size_at_start > 0 ? state.round.deck_size_at_start : state.deck.length;
-    return getBaseGoldEconomy(deckSize, state.round.eat_sequence.length);
+    return state.round.eat_sequence.length;
   }
 
   return {
     recordAction,
     finalizeRound,
-    getGoldEconomy,
     getGoldReward,
     levelProgressCheck,
     getNextTargetInfo: getNextMilestone,

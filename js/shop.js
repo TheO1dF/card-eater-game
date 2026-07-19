@@ -3,12 +3,11 @@ import { createShopCardPool, getCardById } from "./data.js";
 import { addItem, createShopItemPool, getItemById } from "./items.js";
 import { getRarityPrice, getShopWeight, RARITY_MODEL } from "./balance.js";
 import { safeAdd, safePositiveInteger } from "./numbers.js";
-import { getOverloadSalvageBonus, getShopSizeSurcharge } from "./deck-pressure.js";
+import { getPlateUpgradeBaseCost, getPlateUpgradeCost } from "./plate.js";
 
 export const RARITY_PRICE = Object.freeze(Object.fromEntries(
   Object.entries(RARITY_MODEL).map(([rarity, model]) => [rarity, model.price]),
 ));
-export const REMOVAL_SALVAGE = Object.freeze({ "普通": 1, "罕见": 2, "稀有": 3, "传奇": 5, "诅咒": 0 });
 
 function takeWeighted(pool, round, random) {
   const weights = pool.map((card) => getShopWeight(card, round));
@@ -31,20 +30,16 @@ export function createShopService(options = {}) {
     const itemDiscount = state.items
       .filter((entry) => entry.effect?.kind === "shop_price_discount")
       .reduce((total, entry) => total + (entry.effect.amount ?? 0), 0);
-    return {
-      discount: (state.round.shop_discount ?? 0) + itemDiscount,
-      size_surcharge: getShopSizeSurcharge(state.deck.length),
-    };
+    return { discount: (state.round.shop_discount ?? 0) + itemDiscount };
   }
 
   function repriceShopCards(state, cards) {
-    const { discount, size_surcharge: sizeSurcharge } = getCardPriceModifiers(state);
+    const { discount } = getCardPriceModifiers(state);
     return cards.map((card) => ({
       ...card,
       shop_base_price: getRarityPrice(card.rarity),
       shop_discount: discount,
-      shop_size_surcharge: sizeSurcharge,
-      shop_price: Math.max(1, getRarityPrice(card.rarity) - discount + sizeSurcharge),
+      shop_price: Math.max(1, getRarityPrice(card.rarity) - discount),
     }));
   }
 
@@ -124,12 +119,31 @@ export function createShopService(options = {}) {
     return { success: true, cost, cards: getShopCards(state), items: getShopItems(state), free };
   }
 
-  function getRemovalValue(state, card) {
-    const base = REMOVAL_SALVAGE[card?.rarity] ?? 0;
-    const itemBonus = state.items
-      .filter((entry) => entry.effect?.kind === "removal_salvage_bonus")
+  function getPlateUpgradeStatus(state) {
+    const discount = state.items
+      .filter((entry) => entry.effect?.kind === "plate_upgrade_discount")
       .reduce((total, entry) => total + (entry.effect.amount ?? 0), 0);
-    return base + itemBonus + getOverloadSalvageBonus(state.deck.length);
+    const baseCost = getPlateUpgradeBaseCost(state.plate_upgrade_count);
+    const cost = getPlateUpgradeCost(state.plate_upgrade_count, discount);
+    if (state.plate_capacity >= GAME_CONFIG.max_plate_capacity) {
+      return { ok: false, reason: "max_capacity", cost, base_cost: baseCost, discount };
+    }
+    if (state.gold < cost) return { ok: false, reason: "insufficient_gold", cost, base_cost: baseCost, discount };
+    return { ok: true, reason: null, cost, base_cost: baseCost, discount };
+  }
+
+  function buyPlateUpgrade(state) {
+    const status = getPlateUpgradeStatus(state);
+    if (!status.ok) return status;
+    state.gold = safeAdd(state.gold, -status.cost);
+    state.plate_capacity = Math.min(GAME_CONFIG.max_plate_capacity, state.plate_capacity + 1);
+    state.plate_upgrade_count = safePositiveInteger(state.plate_upgrade_count + 1, GAME_CONFIG.max_plate_capacity);
+    state.last_shop_transaction = {
+      kind: "plate_upgrade",
+      cost: status.cost,
+      plate_capacity: state.plate_capacity,
+    };
+    return { ...status, success: true, plate_capacity: state.plate_capacity };
   }
 
   function removeCard(state, cardUuid) {
@@ -139,8 +153,7 @@ export function createShopService(options = {}) {
 
     const removed = state.deck[index];
     const cost = state.remove_card_cost;
-    const salvage = getRemovalValue(state, removed);
-    state.gold = safeAdd(state.gold, -cost + salvage);
+    state.gold = safeAdd(state.gold, -cost);
     state.deck.splice(index, 1);
     state.remove_count += 1;
     state.remove_card_cost = state.remove_count * GAME_CONFIG.delete_cost_step;
@@ -148,8 +161,6 @@ export function createShopService(options = {}) {
       kind: "remove",
       card_name: removed.name,
       cost,
-      salvage,
-      overload_salvage: getOverloadSalvageBonus(state.deck.length + 1),
     };
     return true;
   }
@@ -162,9 +173,10 @@ export function createShopService(options = {}) {
     buyCard,
     getBuyItemStatus,
     buyItem,
-    getRemovalValue,
     removeCard,
     getRerollCost,
     rerollShop,
+    getPlateUpgradeStatus,
+    buyPlateUpgrade,
   };
 }

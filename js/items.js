@@ -97,9 +97,9 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "deck_size_multiplier", minimum: 14, multiplier: 1.08 },
   }, 12),
   item({
-    id: "IT106", name: "回收标签", rarity: "普通道具", role: "精简", shop_price: 7, min_shop_round: 3,
-    description: "商店回收卡牌时，额外返还 1 金币。",
-    effect: { kind: "removal_salvage_bonus", amount: 1 },
+    id: "IT106", name: "餐盘量尺", rarity: "普通道具", role: "餐盘", shop_price: 7, min_shop_round: 3,
+    description: "餐盘扩容费用永久 -1，最低仍为 1 金币。",
+    effect: { kind: "plate_upgrade_discount", amount: 1 },
   }, 13),
   item({
     id: "IT107", name: "铰链夹", rarity: "普通道具", role: "相邻", shop_price: 6, min_shop_round: 2,

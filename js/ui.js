@@ -4,7 +4,7 @@ import { formatScore } from "./numbers.js";
 import { getQuestRequirement, getQuestTarget } from "./quests.js";
 import { KEYWORD_LIBRARY } from "./keywords.js";
 import { getCardById } from "./data.js";
-import { getDeckPressureSummary } from "./deck-pressure.js";
+import { getPlateSummary } from "./plate.js";
 
 const PHASE_LABELS = Object.freeze({
   Init: "准备中", RuleDraft: "规则选择", QuestDraft: "任务选择", Playing: "出牌中", Scoring: "结算中",
@@ -154,10 +154,10 @@ function shopCardElement(card, onBuy) {
   const button = document.createElement("button");
   button.className = `shop-card rarity-${RARITY_CLASS[card.rarity] ?? "common"}`;
   button.type = "button";
-  const priceNote = card.shop_discount > 0 || card.shop_size_surcharge > 0
-    ? `<small class="shop-price-note">基础 $${card.shop_base_price}${card.shop_discount > 0 ? ` · 优惠 -${card.shop_discount}` : ""}${card.shop_size_surcharge > 0 ? ` · 扩容 +${card.shop_size_surcharge}` : ""}</small>`
+  const priceNote = card.shop_discount > 0
+    ? `<small class="shop-price-note">基础 $${card.shop_base_price} · 优惠 -${card.shop_discount}</small>`
     : "";
-  button.title = `基础价 ${card.shop_base_price ?? card.shop_price}；优惠 ${card.shop_discount ?? 0}；牌组扩容溢价 ${card.shop_size_surcharge ?? 0}`;
+  button.title = `基础价 ${card.shop_base_price ?? card.shop_price}；优惠 ${card.shop_discount ?? 0}`;
   button.innerHTML = `
     <span class="shop-card-icon game-sprite" style="${spriteStyle(card)}"></span>
     <span class="shop-card-copy"><small>${card.rarity} · ${card.type} · ${ROLE_LABEL[card.role] ?? "特殊"}</small><strong>${card.name}</strong><em>吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</em><i>${card.effect?.description ?? "稳定基础价值"}</i>${priceNote}</span>
@@ -167,12 +167,12 @@ function shopCardElement(card, onBuy) {
   return button;
 }
 
-function deckChipElement(card, cost, salvage, onRemove) {
+function deckChipElement(card, cost, onRemove) {
   const button = document.createElement("button");
   button.className = "deck-chip";
   button.type = "button";
-  button.title = `${card.name}：支付 ${cost} 金币回收，返还 ${salvage} 金币`;
-  button.innerHTML = `<span class="game-sprite" style="${spriteStyle(card)}"></span><b>${card.name}</b><small>${EDIBILITY_LABEL[card.edibility]} · 吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</small><i>回收 $${cost} · 返还 +${salvage}</i>`;
+  button.title = `${card.name}：支付 ${cost} 金币从永久牌组中删除，不返还金币`;
+  button.innerHTML = `<span class="game-sprite" style="${spriteStyle(card)}"></span><b>${card.name}</b><small>${EDIBILITY_LABEL[card.edibility]} · 吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</small><i>删除 $${cost} · 无返还</i>`;
   button.addEventListener("click", () => onRemove(card.uuid));
   return button;
 }
@@ -231,15 +231,14 @@ export function createUI(root) {
       <span>${Object.entries(typeCounts).sort(([, a], [, b]) => b - a).map(([type, count]) => `${type} ${count}`).join(" · ")}</span>
     `;
     const liveRound = state.phase === "Playing" || state.phase === "Scoring";
-    const pressureDeckSize = liveRound && state.round.deck_size_at_start ? state.round.deck_size_at_start : state.deck.length;
-    const pressure = getDeckPressureSummary(pressureDeckSize);
-    const actionBudget = liveRound && state.round.action_budget ? state.round.action_budget : pressure.action_budget;
-    const reserveCount = liveRound && state.round.action_budget ? state.round.reserve_count : pressure.reserve_count;
-    get("#deckPressureSummary").innerHTML = `
-      <div><small>${liveRound ? "本轮登场" : "下轮预计"}</small><b>${actionBudget} / ${pressureDeckSize}</b><span>${reserveCount > 0 ? `${reserveCount} 张不登场` : "全牌组登场"}</span></div>
-      <div><small>构筑密度</small><b>×${pressure.precision_multiplier}</b><span>${pressure.precision_multiplier > 1 ? "精简牌组得分奖励" : "无额外倍率"}</span></div>
-      <div><small>基础金币</small><b>最多 +${pressure.gold_cap}</b><span>携带费 -${pressure.upkeep}</span></div>
-      <div><small>商店压力</small><b>卡价 +${pressure.shop_surcharge}</b><span>超载回收 +${pressure.salvage_bonus}</span></div>
+    const plate = getPlateSummary(state.deck.length, state.plate_capacity);
+    const actionBudget = liveRound && state.round.action_budget ? state.round.action_budget : plate.action_budget;
+    const reserveCount = liveRound && state.round.action_budget ? state.round.reserve_count : plate.reserve_count;
+    get("#deckCapacitySummary").innerHTML = `
+      <div><small>${liveRound ? "本轮登场" : "下轮预计"}</small><b>${actionBudget} / ${state.deck.length}</b><span>${reserveCount > 0 ? `${reserveCount} 张留在牌组` : "全牌组登场"}</span></div>
+      <div><small>永久餐盘</small><b>${state.plate_capacity} 张</b><span>商店可付费扩容</span></div>
+      <div><small>未登场候选</small><b>${reserveCount} 张</b><span>每轮重新随机抽取</span></div>
+      <div><small>容量上限</small><b>${GAME_CONFIG.max_plate_capacity} 张</b><span>每次扩容永久 +1</span></div>
     `;
     get("#deckStatusList").replaceChildren(...groups.map(({ card, quantity }) => deckStatusCardElement(card, quantity)));
     get("#keywordGlossaryList").innerHTML = Object.entries(KEYWORD_LIBRARY)
@@ -287,7 +286,7 @@ export function createUI(root) {
     const liveRound = state.phase === "Playing" || state.phase === "Scoring";
     const budget = liveRound && state.round.action_budget
       ? state.round.action_budget
-      : getDeckPressureSummary(state.deck.length).action_budget;
+      : getPlateSummary(state.deck.length, state.plate_capacity).action_budget;
     setText(get("#remainingLabel"), liveRound ? "餐盘剩余" : "下轮登场");
     setText(nodes.remaining, liveRound ? `${state.round.draw_pile.length}/${budget}` : `${budget}张`);
     nodes.remaining.title = `${liveRound ? "本轮" : "下轮预计"}登场 ${budget} 张；永久牌组 ${state.deck.length} 张`;
@@ -491,7 +490,7 @@ export function createUI(root) {
       } else {
         eyebrow.textContent = `ROUND ${String(state.current_round).padStart(2, "0")} CLEAR`;
         title.textContent = "本轮结算";
-        tip.textContent = `用时 ${(state.round.elapsed_ms / 1000).toFixed(1)} 秒 · 吃牌 ${result.gold_eaten} 次 · 基础金币 ${result.gold_economy.gross} - 携带费 ${result.gold_economy.upkeep} = +${result.gold_reward}`;
+        tip.textContent = `用时 ${(state.round.elapsed_ms / 1000).toFixed(1)} 秒 · 吃牌 ${result.gold_eaten} 次 · 基础金币 +${result.gold_reward}`;
         button.textContent = "确认结算 · 进入商店";
         button.classList.remove("danger-action");
       }
@@ -512,18 +511,29 @@ export function createUI(root) {
       nodes.summary.classList.add("show");
     },
     hideRoundSummary() { nodes.summary.classList.remove("show"); },
-    openShop(state, cards, itemOffers, onBuy, onBuyItem, onRemove, onReroll, onContinue, getRemovalValue) {
+    openShop(state, cards, itemOffers, onBuy, onBuyItem, onRemove, onPlateUpgrade, onReroll, onContinue, plateUpgradeStatus) {
       renderHud(state);
-      const pressure = getDeckPressureSummary(state.deck.length);
-      get("#shopPressureSummary").innerHTML = `
-        <span><b>${state.deck.length} 张牌</b> · 下轮随机登场 ${pressure.action_budget} 张</span>
-        <span>卡牌扩容溢价 <b>+${pressure.shop_surcharge}</b> · 携带费 <b>-${pressure.upkeep}</b> · 超载回收 <b>+${pressure.salvage_bonus}</b></span>
+      const plate = getPlateSummary(state.deck.length, state.plate_capacity);
+      get("#shopPlateSummary").innerHTML = `
+        <span><b>${state.deck.length} 张牌</b> · 永久餐盘 <b>${state.plate_capacity}</b> 张 · 下轮登场 ${plate.action_budget} 张</span>
+        <span>${plate.reserve_count > 0 ? `${plate.reserve_count} 张不会在下轮登场` : "当前牌组可全部登场"}</span>
       `;
       nodes.shopOffers.replaceChildren(...cards.map((card) => shopCardElement(card, onBuy)));
       if (cards.length === 0) nodes.shopOffers.innerHTML = '<p class="empty-shop">商品售罄</p>';
       nodes.shopItems.replaceChildren(...itemOffers.map((entry) => shopItemElement(entry, onBuyItem)));
       if (itemOffers.length === 0) nodes.shopItems.innerHTML = '<p class="empty-shop">本局低级道具已售罄</p>';
-      nodes.shopDeck.replaceChildren(...state.deck.map((card) => deckChipElement(card, state.remove_card_cost, getRemovalValue(card), onRemove)));
+      nodes.shopDeck.replaceChildren(...state.deck.map((card) => deckChipElement(card, state.remove_card_cost, onRemove)));
+      const plateUpgradeButton = get("#shopPlateUpgrade");
+      const plateUpgradeDetail = get("#shopPlateUpgradeDetail");
+      const plateMaxed = plateUpgradeStatus.reason === "max_capacity";
+      plateUpgradeButton.disabled = plateMaxed;
+      plateUpgradeButton.textContent = plateMaxed
+        ? `餐盘已满 · ${state.plate_capacity}/${GAME_CONFIG.max_plate_capacity}`
+        : `永久扩容 +1 · $${plateUpgradeStatus.cost}`;
+      plateUpgradeButton.onclick = onPlateUpgrade;
+      plateUpgradeDetail.textContent = plateMaxed
+        ? "已达到本局餐盘容量上限"
+        : `当前 ${state.plate_capacity} 张 → ${state.plate_capacity + 1} 张${plateUpgradeStatus.discount > 0 ? ` · 量尺优惠 -${plateUpgradeStatus.discount}` : ""}`;
       const rerollCost = state.round.shop_free_rerolls > 0
         ? 0
         : GAME_CONFIG.shop_reroll_base_cost + state.round.shop_reroll_count * GAME_CONFIG.shop_reroll_cost_step;

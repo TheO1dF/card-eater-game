@@ -10,7 +10,7 @@ import { createUI } from "./ui.js";
 import { browserPlatform } from "./platform.js";
 import { initAudio, playSound, toggleBGM } from "./audio.js";
 import { safeAdd } from "./numbers.js";
-import { takeRoundDrawPile } from "./deck-pressure.js";
+import { takeRoundDrawPile } from "./plate.js";
 
 const state = createInitialPlayerState({ create_id: browserPlatform.create_id });
 const engine = createRoundEngine();
@@ -59,15 +59,10 @@ function completeRound() {
   state.round.elapsed_ms = Math.max(1, browserPlatform.now() - state.round.started_at_ms);
 
   const result = engine.finalizeRound(state);
-  const goldEconomy = engine.getGoldEconomy(state);
-  result.gold_economy = goldEconomy;
-  result.gold_reward = goldEconomy.net;
+  result.gold_reward = engine.getGoldReward(state);
   result.gold_eaten = state.round.eat_sequence.length;
-  state.gold = safeAdd(state.gold, goldEconomy.net);
-  result.breakdown.splice(-1, 0,
-    { label: `基础金币（前 ${goldEconomy.cap} 次吃牌）`, text: `+${goldEconomy.gross}`, kind: "bonus" },
-    { label: "牌组携带费", text: goldEconomy.upkeep > 0 ? `-${goldEconomy.upkeep}` : "0", kind: goldEconomy.upkeep > 0 ? "penalty" : "detail" },
-  );
+  state.gold = safeAdd(state.gold, result.gold_reward);
+  result.breakdown.splice(-1, 0, { label: "基础金币（每次吃牌 +1）", text: `+${result.gold_reward}`, kind: "bonus" });
   result.quest_result = finalizeQuest(state, result);
   result.round_end_item_results = applyRoundEndItems(state, { random: browserPlatform.random });
   result.round_end_item_results.forEach((message) => {
@@ -180,7 +175,7 @@ const gesture = createGestureController({
 function prepareRound() {
   resetRoundState(state);
   const shuffledDeck = shuffle(state.deck.map((card) => ({ ...card, effect: card.effect ? { ...card.effect } : null })));
-  Object.assign(state.round, takeRoundDrawPile(shuffledDeck));
+  Object.assign(state.round, takeRoundDrawPile(shuffledDeck, state.plate_capacity));
   applyRoundItemSetup(state);
   applyQuestRoundPenalty(state, browserPlatform.random);
   shopBuffer = null;
@@ -255,7 +250,7 @@ function enterShop() {
         const status = shopService.getBuyCardStatus(state, item);
         const message = {
           insufficient_gold: `金币不足：需要 ${item.shop_price}，当前 ${state.gold}。`,
-          deck_full: `牌组已达 ${GAME_CONFIG.max_deck_size} 张上限，先回收一张牌。`,
+          deck_full: `牌组已达 ${GAME_CONFIG.max_deck_size} 张上限，先删除一张牌。`,
           copy_limit: `「${item.name}」已达到本局持有上限。`,
           missing_card: "商品数据已失效，请刷新商店。",
           invalid_offer: "商品价格异常，请刷新商店。",
@@ -283,12 +278,23 @@ function enterShop() {
       if (shopService.removeCard(state, cardUuid)) {
         const transaction = state.last_shop_transaction;
         ui.setShopMessage(
-          `回收「${transaction.card_name}」：支付 ${transaction.cost}，返还 ${transaction.salvage}；下次费用 ${state.remove_card_cost}。`,
+          `删除「${transaction.card_name}」：支付 ${transaction.cost}；下次删牌费用 ${state.remove_card_cost}。`,
           "success",
         );
       } else {
         const reason = state.deck.length <= 1 ? "牌组至少保留 1 张牌。" : "金币不足，无法删除这张牌。";
         ui.setShopMessage(reason, "error");
+      }
+      enterShop();
+    },
+    () => {
+      const upgrade = shopService.buyPlateUpgrade(state);
+      if (upgrade.success) {
+        ui.setShopMessage(`支付 ${upgrade.cost} 金币，餐盘上限永久提升至 ${upgrade.plate_capacity}。`, "success");
+      } else if (upgrade.reason === "max_capacity") {
+        ui.setShopMessage(`餐盘已达到 ${GAME_CONFIG.max_plate_capacity} 张上限。`, "error");
+      } else {
+        ui.setShopMessage(`金币不足：餐盘扩容需要 ${upgrade.cost}，当前 ${state.gold}。`, "error");
       }
       enterShop();
     },
@@ -311,7 +317,7 @@ function enterShop() {
       state.current_round += 1;
       enterRuleDraft();
     },
-    (card) => shopService.getRemovalValue(state, card),
+    shopService.getPlateUpgradeStatus(state),
   );
 }
 

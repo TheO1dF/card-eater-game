@@ -6,7 +6,7 @@
 
 | H5 模块 | Godot 建议实现 | 职责 |
 | --- | --- | --- |
-| `config.js`, `balance.js`, `deck-pressure.js` | `GameConfig.gd` / `.tres` | 轮数、门槛、价格、商店权重与牌组压力 |
+| `config.js`, `balance.js`, `plate.js` | `GameConfig.gd` / `.tres` | 轮数、门槛、价格、商店权重与永久餐盘容量 |
 | `data.js`, `keywords.js`, `rules.js` | JSON / Godot Resource | 卡牌、统一关键字与永久规则内容库 |
 | `quests.js`, `items.js` | JSON / Godot Resource | 危险任务、永久道具与奖励 |
 | `numbers.js` | `SafeNumbers.gd` | 有限值、饱和运算、紧凑显示 |
@@ -22,11 +22,13 @@
 
 ```json
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "phase": "Playing",
   "current_round": 6,
   "total_score": 220,
   "gold": 9,
+  "plate_capacity": 10,
+  "plate_upgrade_count": 0,
   "deck": [],
   "active_rules": [],
   "rule_history": [],
@@ -38,7 +40,6 @@
     "draw_pile": [],
     "action_budget": 10,
     "reserve_count": 0,
-    "deck_size_at_start": 10,
     "spent_pile": [],
     "actions": [],
     "eat_sequence": [],
@@ -67,7 +68,7 @@
 
 `active_rules` 是本局永久规则集合，每轮只追加、不替换；`items`、`active_quest` 与两种 history 用于存档、回放和分析。卡牌稳定字段包括 `id/name/rarity/type/edibility/eat_points/discard_points/role/synergy_tags/effect`。每张卡保存 `art_file/runtime_atlas/runtime_x/runtime_y/sprite_sheet/sprite_x/sprite_y`；H5 使用“7 张开局独立小图 + 单张中后期紧凑图集”，任务和道具使用 4×4 `meta-atlas.webp`。Godot 可直接使用独立纹理，或按图集字段建立 `AtlasTexture`。
 
-`deck-pressure.js` 是 v0.9 新增的纯函数边界。每轮必须先洗完整牌组，再按 `getRoundDrawBudget` 截取餐盘并记录开局牌组张数；结算使用该快照计算构筑密度、基础金币上限和携带费，不能用轮中摧毁后的张数规避费用。商店按实时牌组张数重算扩张附加价，回收则在删除前计算超载奖励。Godot 侧应逐项复刻现有测试向量。
+`plate.js` 是 v0.10 的纯函数边界。每轮必须先洗完整牌组，再按永久 `plate_capacity` 截取餐盘，并记录 `action_budget / reserve_count`。牌组尺寸不再修改倍率、基础金币、卡价或删牌收入；基础金币等于实际吃牌数。商店扩容每次永久 `+1`，基础价格依次为 3 / 5 / 8 / 12 / 17 / 23……；刷新费用为 1 / 2 / 3……。Godot 侧应逐项复刻现有测试向量。
 
 运行时卡图不是直接按 AI 图集的固定格子裸切：`scripts/optimize-sprites.mjs` 会先移除跨格孤立像素，再根据 alpha 主体包围盒缩放到统一安全区并光学居中。Godot 侧若直接使用 `assets/cards/*.webp`，可获得与 H5 一致的图标尺寸和锚点；重新生成美术资源后应先运行该导出流程。
 

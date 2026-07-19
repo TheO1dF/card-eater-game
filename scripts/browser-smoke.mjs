@@ -170,7 +170,7 @@ for (const viewport of [
       list_scroll_height: list?.scrollHeight ?? 0,
       list_client_height: list?.clientHeight ?? 0,
       deck_horizontal_overflow: Boolean(panel && panel.right > innerWidth + 1),
-      pressure_cell_count: document.querySelectorAll("#deckPressureSummary > div").length,
+      capacity_cell_count: document.querySelectorAll("#deckCapacitySummary > div").length,
     };
   })()`));
   await capture(`${viewport.name}-deck-status`);
@@ -206,6 +206,9 @@ for (const viewport of [
     shop_visible: document.querySelector("#shopPanel")?.classList.contains("show"),
     offer_count: document.querySelectorAll(".shop-card").length,
     item_offer_count: document.querySelectorAll(".shop-item-card").length,
+    plate_summary: document.querySelector("#shopPlateSummary")?.textContent?.replace(/\\s+/g, " ").trim(),
+    plate_upgrade_label: document.querySelector("#shopPlateUpgrade")?.textContent,
+    plate_upgrade_detail: document.querySelector("#shopPlateUpgradeDetail")?.textContent,
     loaded_sprite_sheets: [...document.querySelectorAll(".shop-card-icon")].map((node) => getComputedStyle(node).backgroundImage)
   })`);
   const secondRound = { second_round_attempted: false };
