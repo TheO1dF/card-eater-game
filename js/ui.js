@@ -5,6 +5,7 @@ import { getQuestRequirement, getQuestTarget } from "./quests.js";
 import { KEYWORD_LIBRARY } from "./keywords.js";
 import { getCardById } from "./data.js";
 import { getPlateSummary } from "./plate.js";
+import { getReshuffleStatus } from "./reshuffle.js";
 
 const PHASE_LABELS = Object.freeze({
   Init: "准备中", RuleDraft: "规则选择", QuestDraft: "任务选择", Playing: "出牌中", Scoring: "结算中",
@@ -314,14 +315,25 @@ export function createUI(root) {
     }
     const reshuffleButton = get("#reshuffleButton");
     if (reshuffleButton) {
-      const canReshuffle = state.phase === "Playing"
-        && state.deck.length <= GAME_CONFIG.reshuffle_max_deck_size
-        && state.round.reshuffle_charges > 0
-        && state.round.spent_pile.length > 0;
+      const reshuffle = getReshuffleStatus(state);
+      const canReshuffle = state.phase === "Playing" && reshuffle.can_use;
       reshuffleButton.disabled = !canReshuffle;
-      reshuffleButton.title = state.deck.length > GAME_CONFIG.reshuffle_max_deck_size
+      reshuffleButton.classList.toggle("is-ready", canReshuffle);
+      reshuffleButton.title = !reshuffle.within_limit
         ? `牌组超过 ${GAME_CONFIG.reshuffle_max_deck_size} 张，无法重洗`
-        : `将 ${state.round.spent_pile.length} 张已处理牌洗回牌堆`;
+        : `将 ${reshuffle.replayable_count} 张已处理牌洗回牌堆`;
+      const hint = get("#reshuffleHint");
+      if (!reshuffle.within_limit) {
+        setText(hint, `牌组需不超过 ${GAME_CONFIG.reshuffle_max_deck_size} 张`);
+      } else if (reshuffle.charges <= 0) {
+        setText(hint, "当前没有重洗次数");
+      } else if (reshuffle.replayable_count <= 0) {
+        setText(hint, `剩余 ${reshuffle.charges} 次 · 先处理卡牌`);
+      } else {
+        setText(hint, `可重洗 ${reshuffle.replayable_count} 张 · 剩余 ${reshuffle.charges} 次`);
+      }
+      const finishButton = get("#finishRoundButton");
+      if (finishButton) finishButton.hidden = !(canReshuffle && state.round.draw_pile.length === 0);
     }
     renderItems(state);
   }
@@ -365,11 +377,12 @@ export function createUI(root) {
       if (activeElement && activeCard) gesture.bind(activeElement, activeCard);
     },
     setGestureProgress,
-    bindControls({ onEat, onDiscard, onReshuffle, onSound }) {
+    bindControls({ onEat, onDiscard, onReshuffle, onFinishRound, onSound }) {
       get("#eatButton")?.addEventListener("click", onEat);
       get("#discardButton")?.addEventListener("click", onDiscard);
       get("#soundButton")?.addEventListener("click", onSound);
       get("#reshuffleButton")?.addEventListener("click", onReshuffle);
+      get("#finishRoundButton")?.addEventListener("click", onFinishRound);
       get("#questStatusClose")?.addEventListener("click", () => nodes.questStatus?.classList.remove("show"));
       get("#deckStatusClose")?.addEventListener("click", () => nodes.deckStatus?.classList.remove("show"));
     },
@@ -379,6 +392,14 @@ export function createUI(root) {
       button.textContent = enabled ? "♪" : "×";
       button.setAttribute("aria-pressed", String(enabled));
       button.classList.toggle("is-muted", !enabled);
+    },
+    playReshuffleAnimation() {
+      const stage = get(".deck-stage");
+      if (!stage) return;
+      stage.classList.remove("is-reshuffling");
+      void stage.offsetWidth;
+      stage.classList.add("is-reshuffling");
+      window.setTimeout(() => stage.classList.remove("is-reshuffling"), 650);
     },
     showFloatingScore(points, action, streak) {
       const stage = get(".deck-stage");

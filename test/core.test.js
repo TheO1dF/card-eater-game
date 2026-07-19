@@ -17,7 +17,9 @@ import {
 } from "../js/plate.js";
 import { activatePendingQuestRewards, applyQuestRoundPenalty, finalizeQuest, QUEST_LIBRARY, randomDraftQuests, selectQuest } from "../js/quests.js";
 import { isRuleEligible, randomDraftRules, RULE_LIBRARY } from "../js/rules.js";
+import { activateReshuffle, getReshuffleStatus } from "../js/reshuffle.js";
 import { createShopService, RARITY_PRICE } from "../js/shop.js";
+import { simulateBatch, simulateRun } from "../scripts/simulate-run.mjs";
 import {
   GAME_PHASES,
   createInitialPlayerState,
@@ -59,8 +61,8 @@ test("永久餐盘默认限制每轮最多登场 10 张牌", () => {
 });
 
 test("餐盘扩容前期便宜、后期昂贵且量尺只提供固定优惠", () => {
-  assert.deepEqual([0, 1, 2, 3, 4, 5].map(getPlateUpgradeBaseCost), [3, 5, 8, 12, 17, 23]);
-  assert.equal(getPlateUpgradeCost(3, 1), 11);
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map(getPlateUpgradeBaseCost), [2, 3, 5, 8, 12, 17]);
+  assert.equal(getPlateUpgradeCost(3, 1), 7);
   assert.equal(getPlateUpgradeCost(0, 99), 1);
 });
 
@@ -236,9 +238,9 @@ test("小牌组成长牌可在重洗后重复成长", () => {
   const seed = instance("F009", "cycle");
   state.deck.push(seed);
   state.round.reshuffle_count = 1;
-  assert.equal(engine.recordAction(state, "eat", seed).points, 0);
-  assert.equal(engine.recordAction(state, "eat", seed).points, 2);
-  assert.equal(state.deck.find((card) => card.uuid === seed.uuid).eat_points, 4);
+  assert.equal(engine.recordAction(state, "eat", seed).points, 1);
+  assert.equal(engine.recordAction(state, "eat", seed).points, 3);
+  assert.equal(state.deck.find((card) => card.uuid === seed.uuid).eat_points, 5);
 });
 
 test("位置构筑支持末位冥王星、前后夹心与噬牌虎摧毁成长", () => {
@@ -315,7 +317,7 @@ test("糖果储存精确兑现、商人按类别动态折扣、兔群头领按�
   candyState.deck.push(candy);
   assert.equal(engine.recordAction(candyState, "eat", candy).points, 1);
   assert.equal(engine.recordAction(candyState, "eat", candy).points, 1);
-  assert.equal(engine.recordAction(candyState, "discard", candy).points, 4);
+  assert.equal(engine.recordAction(candyState, "discard", candy).points, 6);
   assert.equal(candyState.deck.find((card) => card.uuid === candy.uuid).stored_score, 0);
 
   const merchantState = readyState();
@@ -499,12 +501,12 @@ test("阶段目标使用此前各轮累计总分，而不是只看目标轮得�
   const state = readyState();
   const engine = createRoundEngine();
   state.current_round = 5;
-  state.total_score = 149;
+  state.total_score = 99;
   engine.recordAction(state, "eat", instance("F001", "milestone"));
   const result = engine.finalizeRound(state);
   assert.equal(result.round_score, 2);
-  assert.equal(state.total_score, 151);
-  assert.deepEqual(engine.levelProgressCheck(state), { passed: true, target: 150 });
+  assert.equal(state.total_score, 101);
+  assert.deepEqual(engine.levelProgressCheck(state), { passed: true, target: 100 });
 });
 
 test("牺牲后爆发与吃弃交替规则能识别节奏", () => {
@@ -581,14 +583,14 @@ test("牌组大小不再改变卡牌价格，餐盘扩容是独立的永久投�
   const shop = createShopService({ random: () => 0.37, create_id: ids });
   let offers = shop.getShopCards(state);
   assert.ok(offers.every((card) => card.shop_price === RARITY_PRICE[card.rarity] && !("shop_size_surcharge" in card)));
-  assert.deepEqual(shop.getPlateUpgradeStatus(state), { ok: true, reason: null, cost: 3, base_cost: 3, discount: 0 });
+  assert.deepEqual(shop.getPlateUpgradeStatus(state), { ok: true, reason: null, cost: 2, base_cost: 2, discount: 0 });
   assert.equal(shop.buyPlateUpgrade(state).success, true);
   assert.equal(state.plate_capacity, 11);
-  assert.equal(state.gold, 97);
-  assert.equal(shop.getPlateUpgradeStatus(state).cost, 5);
+  assert.equal(state.gold, 98);
+  assert.equal(shop.getPlateUpgradeStatus(state).cost, 3);
   assert.equal(shop.buyPlateUpgrade(state).success, true);
   assert.equal(state.plate_capacity, 12);
-  assert.equal(state.gold, 92);
+  assert.equal(state.gold, 95);
   assert.equal(shop.buyCard(state, offers[0]), true);
   offers = shop.repriceShopCards(state, offers.slice(1));
   assert.ok(offers.every((card) => card.shop_price === RARITY_PRICE[card.rarity]));
@@ -674,17 +676,17 @@ test("弃牌经济需要先完成弃牌节奏，不再由吃牌滚雪球", () =>
   assert.equal(state.gold, 4);
 });
 
-test("删牌费用按 0、5、10 递增", () => {
+test("删牌费用按 0、3、6 递增", () => {
   const state = readyState();
   state.gold = 100;
   const shop = createShopService({ random: () => 0.5, create_id: ids });
   assert.equal(shop.removeCard(state, state.deck[0].uuid), true);
   assert.equal(state.gold, 100);
   assert.equal("salvage" in state.last_shop_transaction, false);
-  assert.equal(state.remove_card_cost, 5);
+  assert.equal(state.remove_card_cost, 3);
   assert.equal(shop.removeCard(state, state.deck[0].uuid), true);
-  assert.equal(state.gold, 95);
-  assert.equal(state.remove_card_cost, 10);
+  assert.equal(state.gold, 97);
+  assert.equal(state.remove_card_cost, 6);
 });
 
 test("任何牌组尺寸和道具都不会让删牌返还金币", () => {
@@ -698,7 +700,7 @@ test("任何牌组尺寸和道具都不会让删牌返还金币", () => {
   assert.equal(state.deck.length, 19);
   assert.equal(state.gold, 10);
   assert.equal("salvage" in state.last_shop_transaction, false);
-  assert.equal(shop.getPlateUpgradeStatus(state).cost, 2);
+  assert.equal(shop.getPlateUpgradeStatus(state).cost, 1);
 });
 
 test("商店出售低级道具，魔法帽在轮末把非兔子变为兔子", () => {
@@ -730,7 +732,7 @@ test("新增关键字、负牌面与商店折扣道具按不同资源轴生效",
 
 test("规则池至少 40 条且同一局抽取绝不重复", () => {
   const state = readyState();
-  assert.equal(RULE_LIBRARY.length, 74);
+  assert.equal(RULE_LIBRARY.length, 76);
   assert.equal(new Set(RULE_LIBRARY.map((rule) => rule.id)).size, RULE_LIBRARY.length);
   const owned = RULE_LIBRARY.slice(0, 15);
   const draft = randomDraftRules(3, owned, () => 0, state.deck);
@@ -838,8 +840,8 @@ test("任务按行动施加明确惩罚，永久虚空牌吃弃都为负分", ()
 
 test("重启按钮与优惠打印机在每轮初始化为小牌组重洗和免费刷新", () => {
   const state = readyState();
-  assert.equal(ITEM_LIBRARY.length, 26);
-  assert.equal(createShopItemPool().length, 14);
+  assert.equal(ITEM_LIBRARY.length, 28);
+  assert.equal(createShopItemPool().length, 16);
   assert.equal(addItem(state, "IT001"), true);
   assert.equal(addItem(state, "IT005"), true);
   assert.equal(addItem(state, "IT001"), false);
@@ -852,6 +854,77 @@ test("重启按钮与优惠打印机在每轮初始化为小牌组重洗和免�
   applyRoundItemSetup(state);
   assert.equal(state.round.reshuffle_charges, 0);
   assert.equal(state.round.shop_free_rerolls, 1);
+});
+
+test("袖珍洗牌机按摧毁后的牌组张数启动，秒表与道具重洗次数可叠加", () => {
+  const state = readyState();
+  const engine = createRoundEngine();
+  while (state.deck.length < 10) state.deck.push(instance("F001", `fill-${state.deck.length}`));
+  const machine = instance("U008", "machine");
+  state.deck.push(machine);
+  assert.equal(state.deck.length, 11);
+  engine.recordAction(state, "discard", machine);
+  assert.equal(state.deck.length, 10);
+  assert.equal(state.round.reshuffle_charges, 1);
+
+  const stopwatch = instance("U014", "timer");
+  state.deck.pop();
+  state.deck.push(stopwatch);
+  addItem(state, "IT115");
+  resetRoundState(state);
+  applyRoundItemSetup(state);
+  assert.equal(state.round.reshuffle_charges, 1);
+  engine.recordAction(state, "discard", stopwatch);
+  state.round.spent_pile.push(stopwatch);
+  assert.equal(state.round.reshuffle_charges, 2);
+  assert.equal(getReshuffleStatus(state).can_use, true);
+  const first = activateReshuffle(state, (cards) => cards);
+  assert.equal(first.success, true);
+  assert.equal(first.remaining_charges, 1);
+  const replayed = state.round.draw_pile.pop();
+  engine.recordAction(state, "discard", replayed);
+  state.round.spent_pile.push(replayed);
+  const second = activateReshuffle(state, (cards) => cards);
+  assert.equal(second.success, true);
+  assert.equal(second.remaining_charges, 0);
+  assert.equal(state.round.reshuffle_count, 2);
+});
+
+test("重洗 UI 提供可用提示、像素动画和空牌堆结束入口", () => {
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const main = readFileSync(new URL("../js/main.js", import.meta.url), "utf8");
+  assert.match(html, /id="reshuffleHint"/);
+  assert.match(html, /id="finishRoundButton"[^>]*hidden/);
+  assert.match(css, /@keyframes reshuffleCard/);
+  assert.match(css, /\.deck-stage\.is-reshuffling \.game-card/);
+  assert.match(main, /function resolveEmptyDrawPile\(\)/);
+  assert.match(main, /ui\.playReshuffleAnimation\(\)/);
+});
+
+test("经济过渡牌覆盖吃牌、弃牌、餐盘余量和商店折扣四种资源轴", () => {
+  const engine = createRoundEngine();
+  const state = readyState();
+  state.deck.push(instance("F010", "orange-a"));
+  const orange = instance("F010", "orange-b");
+  state.deck.push(orange);
+  engine.recordAction(state, "eat", orange);
+  assert.equal(state.round.pending_gold_bonus, 1);
+
+  const satellite = instance("C009", "reserve");
+  state.deck.push(satellite);
+  state.round.reserve_count = 5;
+  engine.recordAction(state, "discard", satellite);
+  assert.equal(state.round.pending_gold_bonus, 3);
+
+  const hotdog = instance("K006", "discount");
+  engine.recordAction(state, "eat", hotdog);
+  assert.equal(state.round.shop_discount, 1);
+
+  addItem(state, "IT116");
+  engine.recordAction(state, "discard", instance("A001", "cloth-a"));
+  engine.recordAction(state, "discard", instance("A001", "cloth-b"));
+  assert.equal(state.round.pending_gold_bonus, 4);
 });
 
 test("极端倍率和超长连击会饱和到安全上限，不产生 Infinity / NaN", () => {
@@ -942,6 +1015,21 @@ test("15 轮长局可连续经过规则、任务、重洗、商店和结算且�
   assert.equal(state.active_rules.length, 15);
 });
 
-test("阶段目标提高为 150 / 1500 / 12000 以承接永久倍率成长", () => {
-  assert.deepEqual(GAME_CONFIG.milestone_targets, { 5: 150, 10: 1500, 15: 12000 });
+test("真实商店决策可完成 15 轮，三类构筑批量通关率不低于 45%", () => {
+  const fullRun = simulateRun({ seed: 1, policy: "balanced" });
+  assert.equal(fullRun.won, true);
+  assert.equal(fullRun.rounds, 15);
+  assert.ok(fullRun.log.some((round) => round.shop.some((event) => event.startsWith("扩容:"))));
+  assert.ok(fullRun.log.some((round) => round.shop.some((event) => event.startsWith("卡:"))));
+
+  const reshuffleRun = simulateRun({ seed: 6, policy: "small" });
+  assert.equal(reshuffleRun.won, true);
+  assert.ok(reshuffleRun.log.reduce((sum, round) => sum + round.reshuffles, 0) >= 2);
+
+  const batch = simulateBatch({ seeds: 20 });
+  assert.ok(batch.every((entry) => entry.win_rate >= 0.45), JSON.stringify(batch));
+});
+
+test("餐盘后的阶段目标调整为 100 / 500 / 1800", () => {
+  assert.deepEqual(GAME_CONFIG.milestone_targets, { 5: 100, 10: 500, 15: 1800 });
 });

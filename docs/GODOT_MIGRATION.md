@@ -22,7 +22,7 @@
 
 ```json
 {
-  "schema_version": 7,
+  "schema_version": 8,
   "phase": "Playing",
   "current_round": 6,
   "total_score": 220,
@@ -68,7 +68,9 @@
 
 `active_rules` 是本局永久规则集合，每轮只追加、不替换；`items`、`active_quest` 与两种 history 用于存档、回放和分析。卡牌稳定字段包括 `id/name/rarity/type/edibility/eat_points/discard_points/role/synergy_tags/effect`。每张卡保存 `art_file/runtime_atlas/runtime_x/runtime_y/sprite_sheet/sprite_x/sprite_y`；H5 使用“7 张开局独立小图 + 单张中后期紧凑图集”，任务和道具使用 4×4 `meta-atlas.webp`。Godot 可直接使用独立纹理，或按图集字段建立 `AtlasTexture`。
 
-`plate.js` 是 v0.10 的纯函数边界。每轮必须先洗完整牌组，再按永久 `plate_capacity` 截取餐盘，并记录 `action_budget / reserve_count`。牌组尺寸不再修改倍率、基础金币、卡价或删牌收入；基础金币等于实际吃牌数。商店扩容每次永久 `+1`，基础价格依次为 3 / 5 / 8 / 12 / 17 / 23……；刷新费用为 1 / 2 / 3……。Godot 侧应逐项复刻现有测试向量。
+`plate.js` 是 v0.11 的纯函数边界。每轮必须先洗完整牌组，再按永久 `plate_capacity` 截取餐盘，并记录 `action_budget / reserve_count`。牌组尺寸不再修改倍率、基础金币、卡价或删牌收入；基础金币等于实际吃牌数。商店扩容每次永久 `+1`，基础价格依次为 2 / 3 / 5 / 8 / 12 / 17……；刷新费用为 1 / 2 / 3……，删牌费用为 0 / 3 / 6……。Godot 侧应逐项复刻现有测试向量。
+
+`reshuffle.js` 是重洗的唯一规则边界：只把本轮已处理且仍属于永久牌组的实体牌洗回；每次消耗 1 点可叠加次数并增加 `reshuffle_count`。空牌堆且仍可重洗时不得自动结算，必须让玩家选择重洗或结束本轮。
 
 运行时卡图不是直接按 AI 图集的固定格子裸切：`scripts/optimize-sprites.mjs` 会先移除跨格孤立像素，再根据 alpha 主体包围盒缩放到统一安全区并光学居中。Godot 侧若直接使用 `assets/cards/*.webp`，可获得与 H5 一致的图标尺寸和锚点；重新生成美术资源后应先运行该导出流程。
 

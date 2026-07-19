@@ -1,15 +1,15 @@
 export const GAME_CONFIG = Object.freeze({
-  schema_version: 7,
+  schema_version: 8,
   total_rounds: 15,
   draft_size: 3,
   quest_interval: 3,
   last_quest_round: 12,
   milestone_targets: Object.freeze({
-    5: 150,
-    10: 1500,
-    15: 12000,
+    5: 100,
+    10: 500,
+    15: 1800,
   }),
-  delete_cost_step: 5,
+  delete_cost_step: 3,
   shop_offer_count: 3,
   shop_item_offer_count: 3,
   shop_reroll_base_cost: 1,
@@ -19,7 +19,7 @@ export const GAME_CONFIG = Object.freeze({
   max_actions_per_round: 400,
   initial_plate_capacity: 10,
   max_plate_capacity: 160,
-  plate_upgrade_base_cost: 3,
+  plate_upgrade_base_cost: 2,
   max_score: 9_000_000_000_000_000,
 });
 

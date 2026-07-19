@@ -20,7 +20,7 @@ export function takeRoundDrawPile(shuffledDeck, plateCapacity) {
 
 export function getPlateUpgradeBaseCost(upgradeCount) {
   const level = count(upgradeCount);
-  return GAME_CONFIG.plate_upgrade_base_cost + level * (level + 3) / 2;
+  return GAME_CONFIG.plate_upgrade_base_cost + level * (level + 1) / 2;
 }
 
 export function getPlateUpgradeCost(upgradeCount, discount = 0) {

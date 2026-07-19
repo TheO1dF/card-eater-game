@@ -78,6 +78,8 @@ export const RULE_LIBRARY = Object.freeze([
   { id: "reshuffle-2", name: "循环过载", description: "本轮至少重洗 2 次：本轮 ×1.9", scope: "min_reshuffles", count: 2, multiplier: 1.9, min_round: 6, requires_reshuffle: true },
   { id: "repeat-card-2", name: "熟能生巧", description: "同一张牌本轮触发至少 2 次：本轮 ×1.55", scope: "repeat_card_actions", count: 2, multiplier: 1.55, min_round: 4, requires_reshuffle: true },
   { id: "repeat-card-3", name: "永动节拍", description: "同一张牌本轮触发至少 3 次：本轮 ×2.2", scope: "repeat_card_actions", count: 3, multiplier: 2.2, min_round: 7, requires_reshuffle: true },
+  { id: "post-reshuffle-5", name: "回锅加热", description: "重洗后再处理至少 5 张牌：本轮 ×1.55", scope: "post_reshuffle_actions", count: 5, multiplier: 1.55, min_round: 3, requires_reshuffle: true },
+  { id: "post-reshuffle-score-20", name: "二次盛宴", description: "重洗后的牌面与效果达到 20 分：本轮 ×1.75", scope: "post_reshuffle_score", score: 20, multiplier: 1.75, min_round: 5, requires_reshuffle: true },
   { id: "last-celestial-discard", name: "行星落幕", description: "最后一张行动是弃掉星体：本轮 ×1.55", scope: "last_action", action: "discard", target_type: "星体", multiplier: 1.55, min_round: 3 },
   { id: "last-animal-discard", name: "兽群收尾", description: "最后一张行动是弃掉动物：本轮 ×1.6", scope: "last_action", action: "discard", target_type: "动物", multiplier: 1.6, min_round: 3 },
   { id: "eat-then-discard-ends", name: "先尝后清", description: "第一张吃、最后一张弃：本轮 ×1.65", scope: "first_last_actions", first_action: "eat", last_action: "discard", multiplier: 1.65, min_round: 3 },
@@ -124,7 +126,7 @@ export function isRuleEligible(rule, deck = [], currentRound = 1, context = {}) 
 }
 
 function ruleArchetype(rule) {
-  if (["min_reshuffles", "repeat_card_actions", "max_deck_size"].includes(rule.scope)) return "small-deck";
+  if (["min_reshuffles", "repeat_card_actions", "post_reshuffle_actions", "post_reshuffle_score", "max_deck_size"].includes(rule.scope)) return "small-deck";
   if (rule.scope === "min_deck_size") return "big-deck";
   if (["last_action", "first_last_actions"].includes(rule.scope)) return "position";
   if (["min_destroyed", "min_generated", "min_grown", "min_keyword_actions"].includes(rule.scope)) return "engine";

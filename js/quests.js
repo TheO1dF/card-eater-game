@@ -87,7 +87,7 @@ export const QUEST_LIBRARY = Object.freeze([
   }, 7),
 ]);
 
-const QUEST_TARGETS = Object.freeze({ 3: 30, 6: 120, 9: 500, 12: 2200 });
+const QUEST_TARGETS = Object.freeze({ 3: 25, 6: 90, 9: 300, 12: 1000 });
 
 function cloneQuest(source) {
   return source ? {

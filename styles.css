@@ -379,6 +379,18 @@ button { -webkit-tap-highlight-color: transparent; }
 .reshuffle-button { min-width: 112px; display: flex; justify-content: center; gap: 9px; padding: 7px 10px; border: 2px solid #78638c; color: var(--rare); background: #2b2337; box-shadow: 3px 3px 0 #09070d; cursor: pointer; font-weight: 900; }
 .reshuffle-button b { color: var(--gold); }
 .reshuffle-button:disabled { border-color: #3b3244; color: #62566c; background: #1a161f; box-shadow: none; cursor: not-allowed; }
+.reshuffle-button.is-ready { border-color: var(--gold); animation: reshuffleReady 800ms steps(2, end) infinite; }
+.finish-round-button { padding: 3px 7px; border: 1px solid #5e506a; color: #a99bb0; background: #19151f; cursor: pointer; font-size: 7px; }
+.finish-round-button:hover { color: var(--paper); border-color: var(--paper); }
+.finish-round-button[hidden] { display: none; }
+@keyframes reshuffleReady { 50% { color: var(--gold); box-shadow: 3px 3px 0 #09070d, 0 0 0 2px rgba(244,198,95,.18); } }
+@keyframes reshuffleCard {
+  0% { transform: translateX(0) rotate(0); }
+  28% { transform: translateX(-72px) rotate(-4deg); }
+  58% { transform: translateX(72px) rotate(4deg); }
+  100% { transform: translateX(0) rotate(0); }
+}
+.deck-stage.is-reshuffling .game-card { animation: reshuffleCard 560ms steps(7, end); }
 .action-button {
   min-height: 48px;
   display: flex;

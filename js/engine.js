@@ -296,6 +296,37 @@ function applyCardEffect(state, action, card, entry) {
     markEffect(entry, card, `${card.name}：商店价格 -${effect.discount ?? 0}`);
   }
 
+  if (effect.kind === "buff_remaining_type"
+    && action === effect.trigger_action
+    && consumeOncePerRound(state, card, effect)) {
+    addBuff(state, {
+      kind: "flat",
+      action: effect.action,
+      target_type: effect.target_type,
+      value: effect.add ?? 0,
+      remaining: GAME_CONFIG.max_actions_per_round,
+    });
+    markEffect(entry, card, `${card.name}：本轮后续${effect.target_type}吃分 +${effect.add ?? 0}`);
+  }
+
+  if (effect.kind === "gold_from_deck_type"
+    && action === effect.trigger_action
+    && consumeOncePerRound(state, card, effect)) {
+    const count = state.deck.filter((owned) => owned.type === effect.target_type).length;
+    const gold = Math.min(effect.max_gold ?? GAME_CONFIG.max_score, Math.floor(count / effect.divisor) * (effect.gold ?? 0));
+    state.round.pending_gold_bonus = safeAdd(state.round.pending_gold_bonus, gold);
+    markEffect(entry, card, `${card.name}：${count} 张${effect.target_type}，结算金币 +${gold}`);
+  }
+
+  if (effect.kind === "gold_from_reserve"
+    && action === effect.trigger_action
+    && consumeOncePerRound(state, card, effect)) {
+    const reserve = state.round.reserve_count ?? 0;
+    const gold = reserve > 0 ? Math.min(effect.max_gold ?? 1, 1 + Math.floor((reserve - 1) / (effect.step ?? 4))) : 0;
+    state.round.pending_gold_bonus = safeAdd(state.round.pending_gold_bonus, gold);
+    markEffect(entry, card, reserve > 0 ? `${card.name}：${reserve} 张未登场牌，结算金币 +${gold}` : `${card.name}：没有未登场牌`);
+  }
+
   if (effect.kind === "dynamic_shop_discount"
     && action === effect.trigger_action
     && consumeOncePerRound(state, card, effect)) {
@@ -815,11 +846,23 @@ function applyCardEffect(state, action, card, entry) {
   }
 
   if (effect.kind === "gain_reshuffle_charge_destroy" && action === effect.trigger_action) {
-    if (state.deck.length <= effect.max_deck_size) {
+    const effectiveDeckSize = state.deck.some((owned) => owned.uuid === card.uuid)
+      ? state.deck.length - 1
+      : state.deck.length;
+    if (effectiveDeckSize <= effect.max_deck_size) {
       state.round.reshuffle_charges = safeAdd(state.round.reshuffle_charges, effect.count ?? 1);
       removePermanentCard(state, card.uuid);
       markEffect(entry, card, `${card.name}：重洗 +${effect.count ?? 1}，摧毁自身`);
     } else {
+      markEffect(entry, card, `${card.name}：摧毁后牌组仍超过 ${effect.max_deck_size} 张，未启动`);
+    }
+  }
+
+  if (effect.kind === "gain_reshuffle_charge" && action === effect.trigger_action) {
+    if (state.deck.length <= effect.max_deck_size && consumeOncePerRound(state, card, effect)) {
+      state.round.reshuffle_charges = safeAdd(state.round.reshuffle_charges, effect.count ?? 1);
+      markEffect(entry, card, `${card.name}：重洗 +${effect.count ?? 1}，本轮可叠加`);
+    } else if (state.deck.length > effect.max_deck_size) {
       markEffect(entry, card, `${card.name}：牌组超过 ${effect.max_deck_size} 张，未启动`);
     }
   }
@@ -884,6 +927,10 @@ export function evaluateRule(state, rule) {
       return false;
     }
     case "min_reshuffles": return state.round.reshuffle_count >= rule.count;
+    case "post_reshuffle_actions": return actions.filter((item) => item.reshuffle_index > 0).length >= rule.count;
+    case "post_reshuffle_score": return actions
+      .filter((item) => item.reshuffle_index > 0)
+      .reduce((sum, item) => safeAdd(sum, item.points), 0) >= rule.score;
     case "repeat_card_actions": {
       const counts = actions.reduce((result, item) => {
         result[item.card_uuid] = (result[item.card_uuid] ?? 0) + 1;
@@ -957,6 +1004,7 @@ export function createRoundEngine() {
       item_bonus: itemEffects.flat_bonus,
       quest_modifier: questModifier,
       effect_bonus: immediateEffect.bonus,
+      reshuffle_index: state.round.reshuffle_count,
       effect_log: null,
       effect_triggered: immediateEffect.detail,
       points: 0,

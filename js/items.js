@@ -72,7 +72,7 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "alternating_action_bonus", bonus: 2 },
   }, 3),
   item({
-    id: "IT101", name: "魔法帽", rarity: "普通道具", role: "生成", shop_price: 7, min_shop_round: 2,
+    id: "IT101", name: "魔法帽", rarity: "普通道具", role: "生成", shop_price: 4, min_shop_round: 1,
     description: "轮次结束时，将牌组中随机 1 张非兔子牌变为兔子。",
     effect: { kind: "round_end_transform", target_card_id: "A004" },
   }, 8),
@@ -92,12 +92,12 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "repeat_type_action_bonus", bonus: 1 },
   }, 11),
   item({
-    id: "IT105", name: "扩容腰包", rarity: "普通道具", role: "大牌组", shop_price: 8, min_shop_round: 4,
+    id: "IT105", name: "扩容腰包", rarity: "普通道具", role: "大牌组", shop_price: 6, min_shop_round: 3,
     description: "牌组达到 14 张时，本轮最终得分 ×1.08。",
     effect: { kind: "deck_size_multiplier", minimum: 14, multiplier: 1.08 },
   }, 12),
   item({
-    id: "IT106", name: "餐盘量尺", rarity: "普通道具", role: "餐盘", shop_price: 7, min_shop_round: 3,
+    id: "IT106", name: "餐盘量尺", rarity: "普通道具", role: "餐盘", shop_price: 4, min_shop_round: 1,
     description: "餐盘扩容费用永久 -1，最低仍为 1 金币。",
     effect: { kind: "plate_upgrade_discount", amount: 1 },
   }, 13),
@@ -112,12 +112,12 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "keyword_card_bonus", keyword: "摧毁", bonus: 2 },
   }, 15),
   item({
-    id: "IT109", name: "育苗盘", rarity: "普通道具", role: "生成", shop_price: 7, min_shop_round: 2,
+    id: "IT109", name: "育苗盘", rarity: "普通道具", role: "生成", shop_price: 5, min_shop_round: 1,
     description: "由【生成】加入牌组的卡牌额外 +1 分。",
     effect: { kind: "generated_card_bonus", bonus: 1 },
   }, 4),
   item({
-    id: "IT110", name: "年轮尺", rarity: "普通道具", role: "成长", shop_price: 7, min_shop_round: 3,
+    id: "IT110", name: "年轮尺", rarity: "普通道具", role: "成长", shop_price: 5, min_shop_round: 1,
     description: "打出带【成长】关键字的牌时，额外 +1 分。",
     effect: { kind: "keyword_card_bonus", keyword: "成长", bonus: 1 },
   }, 5),
@@ -132,7 +132,7 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "negative_action_gold", gold: 1, once_per_round: true },
   }, 7),
   item({
-    id: "IT113", name: "夜市会员卡", rarity: "普通道具", role: "商店", shop_price: 9, min_shop_round: 4,
+    id: "IT113", name: "夜市会员卡", rarity: "普通道具", role: "商店", shop_price: 6, min_shop_round: 2,
     description: "商店卡牌价格额外 -1，最低仍为 1 金币。",
     effect: { kind: "shop_price_discount", amount: 1 },
   }, 8),
@@ -141,6 +141,16 @@ export const ITEM_LIBRARY = Object.freeze([
     description: "既非首位也非末位的行动牌额外 +2 分。",
     effect: { kind: "middle_action_bonus", bonus: 2 },
   }, 9),
+  item({
+    id: "IT115", name: "回卷发条", rarity: "普通道具", role: "重洗", shop_price: 5, min_shop_round: 1,
+    description: "牌组不超过 10 张时，每轮获得 1 次重洗；可与其他重洗次数叠加。",
+    effect: { kind: "round_reshuffle_charge", charges: 1, max_deck_size: 10 },
+  }, 10),
+  item({
+    id: "IT116", name: "零钱餐巾", rarity: "普通道具", role: "经济", shop_price: 4, min_shop_round: 1,
+    description: "每轮每弃 2 张牌获得 1 金币，最多触发 3 次。",
+    effect: { kind: "discard_gold_every", count: 2, gold: 1, max_triggers: 3 },
+  }, 11),
 ]);
 
 const ITEM_BY_ID = Object.freeze(Object.fromEntries(ITEM_LIBRARY.map((entry) => [entry.id, entry])));

@@ -11,6 +11,7 @@ import { browserPlatform } from "./platform.js";
 import { initAudio, playSound, toggleBGM } from "./audio.js";
 import { safeAdd } from "./numbers.js";
 import { takeRoundDrawPile } from "./plate.js";
+import { activateReshuffle, getReshuffleStatus } from "./reshuffle.js";
 
 const state = createInitialPlayerState({ create_id: browserPlatform.create_id });
 const engine = createRoundEngine();
@@ -118,6 +119,19 @@ function resolveForcedDiscards() {
   if (state.round.draw_pile.length > 0) state.round.draw_pile.length = 0;
 }
 
+function resolveEmptyDrawPile() {
+  if (state.round.draw_pile.length > 0) return false;
+  const reshuffle = getReshuffleStatus(state);
+  if (reshuffle.can_use) {
+    actionLocked = false;
+    refreshTable();
+    ui.showEffectFlash(`牌堆已空 · 可重洗 ${reshuffle.replayable_count} 张，剩余 ${reshuffle.charges} 次`);
+    return true;
+  }
+  completeRound();
+  return true;
+}
+
 function handleAction(action, card) {
   if (state.phase !== GAME_PHASES.PLAYING) {
     actionLocked = false;
@@ -158,8 +172,7 @@ function handleAction(action, card) {
   }
   resolveForcedDiscards();
   ui.setGestureProgress({ progress: 0, direction: null });
-  if (state.round.draw_pile.length === 0) completeRound();
-  else {
+  if (!resolveEmptyDrawPile()) {
     actionLocked = false;
     refreshTable();
   }
@@ -323,19 +336,23 @@ function enterShop() {
 
 function tryReshuffle() {
   if (actionLocked || state.phase !== GAME_PHASES.PLAYING) return;
-  const canUse = state.deck.length <= GAME_CONFIG.reshuffle_max_deck_size
-    && state.round.reshuffle_charges > 0
-    && state.round.spent_pile.length > 0;
-  if (!canUse) return;
-  const replayable = state.round.spent_pile.filter((card) => state.deck.some((item) => item.uuid === card.uuid));
-  if (replayable.length === 0) return;
-  state.round.reshuffle_charges -= 1;
-  state.round.reshuffle_count += 1;
-  state.round.draw_pile = shuffle([...state.round.draw_pile, ...replayable]);
-  state.round.spent_pile = [];
+  const result = activateReshuffle(state, shuffle);
+  if (!result.success) return;
+  actionLocked = true;
   streak = { action: null, count: 0 };
-  ui.showEffectFlash(`重洗启动 · 第 ${state.round.reshuffle_count} 次循环`);
+  ui.showEffectFlash(`重洗启动 · ${result.replayed_count} 张牌回到餐盘 · 剩余 ${result.remaining_charges} 次`);
   refreshTable();
+  ui.playReshuffleAnimation();
+  window.setTimeout(() => {
+    if (state.phase !== GAME_PHASES.PLAYING) return;
+    actionLocked = false;
+    ui.renderHud(state);
+  }, 580);
+}
+
+function tryFinishRound() {
+  if (actionLocked || state.phase !== GAME_PHASES.PLAYING || state.round.draw_pile.length > 0) return;
+  completeRound();
 }
 
 function tryCommit(action) {
@@ -347,6 +364,7 @@ ui.bindControls({
   onEat: () => tryCommit("eat"),
   onDiscard: () => tryCommit("discard"),
   onReshuffle: tryReshuffle,
+  onFinishRound: tryFinishRound,
   onSound: () => {
     soundEnabled = !soundEnabled;
     if (soundEnabled) {

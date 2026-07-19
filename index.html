@@ -67,7 +67,8 @@
           <button class="action-button discard-button" id="discardButton" type="button"><kbd>↑</kbd><span>弃掉</span></button>
           <div class="control-center">
             <button class="reshuffle-button" id="reshuffleButton" type="button" disabled><span>↻ 重洗</span><b id="reshuffleCount">0</b></button>
-            <small>小牌组循环已处理卡牌</small>
+            <small id="reshuffleHint">先处理卡牌以启动重洗</small>
+            <button class="finish-round-button" id="finishRoundButton" type="button" hidden>不重洗 · 结束本轮</button>
           </div>
           <button class="action-button eat-button" id="eatButton" type="button"><kbd>↓</kbd><span>吃掉</span></button>
         </footer>
@@ -97,7 +98,7 @@
             <div class="eyebrow">ROUND <span id="draftRoundValue">01</span> · RULE PICK</div>
             <h1 id="ruleDraftTitle">选择一条规则</h1>
             <p class="modal-lead">选择一条永久加入本局且不会重复的规则；规则会持续叠加，构筑越打越爽。</p>
-            <div class="target-banner"><span>下一阶段目标</span><strong id="draftTargetText">第 5 轮 · 150 分</strong></div>
+            <div class="target-banner"><span>下一阶段目标</span><strong id="draftTargetText">第 5 轮 · 100 分</strong></div>
             <div class="option-grid" id="ruleDraftList"></div>
           </section>
         </div>
@@ -143,7 +144,7 @@
             <p class="modal-lead" id="summaryTip">每条得分只计算一次，规则倍率在最后结算。</p>
             <div class="milestone-summary" aria-label="阶段目标进度">
               <span id="summaryMilestoneRounds">距离第 5 轮目标还有 4 轮</span>
-              <strong id="summaryMilestoneScore">累计 0 / 目标 150 分</strong>
+              <strong id="summaryMilestoneScore">累计 0 / 目标 100 分</strong>
               <div class="milestone-meter" aria-hidden="true"><i id="summaryMilestoneFill"></i></div>
             </div>
             <div class="receipt" id="summaryBreakdownList"></div>
