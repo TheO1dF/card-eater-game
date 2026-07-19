@@ -142,6 +142,8 @@ button { -webkit-tap-highlight-color: transparent; }
 .icon-button:disabled { color: #61566a; background: #27212f; box-shadow: none; cursor: default; }
 .quest-info-button { color: var(--danger); font-size: 13px; }
 .deck-info-button { color: var(--gold); font-size: 13px; }
+.rule-info-button { color: var(--rare); font-size: 13px; }
+.item-info-button { color: #9ed9c2; font-size: 13px; }
 .quest-info-button.has-active-quest { border-color: var(--danger); box-shadow: 0 0 0 2px #421d29, 2px 2px 0 #0b0911; animation: questPulse 1.2s steps(2, end) infinite; }
 @keyframes questPulse { 50% { color: var(--paper); background: #6f3348; } }
 
@@ -272,7 +274,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .game-card.is-active:active { cursor: grabbing; }
 .game-card.card-edible { border-top-color: #448b66; }
 .game-card.card-inedible { border-top-color: #b95d4c; }
-.game-card.rarity-uncommon { background: #d8e7c2; box-shadow: 0 0 0 2px #6e9167, calc(5px + var(--depth) * 2px) calc(6px + var(--depth) * 3px) 0 #09070d; }
+.game-card.rarity-uncommon { background: #e8ddc4; box-shadow: 0 0 0 2px #9a7d62, calc(5px + var(--depth) * 2px) calc(6px + var(--depth) * 3px) 0 #09070d; }
 .game-card.rarity-rare { background: #e0d1ef; box-shadow: 0 0 0 2px #8e68ab, calc(5px + var(--depth) * 2px) calc(6px + var(--depth) * 3px) 0 #09070d; }
 .game-card.rarity-legendary { background: #f5d49b; box-shadow: 0 0 0 2px #c15f44, calc(5px + var(--depth) * 2px) calc(6px + var(--depth) * 3px) 0 #09070d; }
 .game-card.rarity-curse { color: #e7dbea; background: #231a2c; box-shadow: 0 0 0 2px #8b3c63, calc(5px + var(--depth) * 2px) calc(6px + var(--depth) * 3px) 0 #09070d; }
@@ -314,8 +316,11 @@ button { -webkit-tap-highlight-color: transparent; }
   min-height: 82px;
   border: 2px solid #9f9587;
   background:
-    radial-gradient(ellipse at center, #fffef8 0 47%, #ebe8df 48% 60%, #c8c1b5 61% 65%, #f8f5ed 66% 71%, #9b9286 72% 74%, transparent 75%),
-    linear-gradient(135deg, #cfc1a9, #b8a78e);
+    linear-gradient(45deg, rgba(71,53,68,.08) 25%, transparent 25%, transparent 75%, rgba(71,53,68,.08) 75%),
+    linear-gradient(45deg, rgba(71,53,68,.08) 25%, transparent 25%, transparent 75%, rgba(71,53,68,.08) 75%),
+    linear-gradient(135deg, #dfd0b7, #bdab90);
+  background-position: 0 0, 7px 7px, 0 0;
+  background-size: 14px 14px, 14px 14px, auto;
   box-shadow: inset 3px 3px 0 rgba(255,255,255,.42), inset -3px -3px 0 rgba(69,52,65,.16);
 }
 .game-sprite {
@@ -540,7 +545,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .quest-requirement b { color: var(--gold); }
 .quest-reward { color: var(--eat); font-size: 9px; font-weight: 900; line-height: 1.5; }
 .quest-status-panel { width: min(620px, 100%); }
-#questStatus, .deck-overlay { z-index: 75; }
+#questStatus, .deck-overlay, .collection-overlay { z-index: 75; }
 .quest-status-state { margin: 0 0 12px; padding: 9px 11px; border: 1px solid #765d84; color: var(--gold); background: #17121f; font-size: 10px; font-weight: 900; }
 .quest-status-state.success { border-color: var(--eat-dark); color: var(--eat); }
 .quest-status-state.failed { border-color: var(--discard-dark); color: var(--danger); }
@@ -553,6 +558,21 @@ button { -webkit-tap-highlight-color: transparent; }
 .quest-history-list li.success b { color: var(--eat); }
 .quest-history-list li.failed b { color: var(--danger); }
 .quest-history-list span { color: var(--muted); text-align: right; }
+
+.collection-status-panel { width: min(760px, 100%); height: min(680px, 100%); display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto; overflow: hidden; }
+.collection-status-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid #675771; color: var(--muted); background: #17121f; font-size: 8px; }
+.collection-status-summary b { color: var(--gold); font-size: 12px; }
+.collection-status-list { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 9px; padding: 2px 7px 8px 2px; overflow: hidden auto; }
+.collection-status-card { min-width: 0; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px; border: 2px solid #554662; color: var(--paper); background: #292135; box-shadow: 3px 3px 0 #0b0911; }
+.collection-status-card > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.collection-status-card small { color: #9a88a4; font-size: 7px; }
+.collection-status-card strong { font-size: 12px; }
+.collection-status-card em { color: #c8bad2; font-size: 8px; font-style: normal; line-height: 1.5; }
+.collection-status-card > b { color: var(--gold); font-size: 15px; }
+.collection-index { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid #745f87; color: var(--rare); background: #17121f; font-size: 10px; font-weight: 900; }
+.collection-item-icon { width: 44px; height: 44px; border: 1px solid #665573; background-color: #111015; background-size: var(--meta-size-x) var(--meta-size-y); background-position: var(--meta-x) var(--meta-y); }
+.item-status-card { grid-template-columns: 48px minmax(0, 1fr); }
+.collection-status-empty { grid-column: 1 / -1; padding: 24px; border: 1px dashed #675771; color: var(--muted); background: #17121f; font-size: 9px; line-height: 1.7; }
 
 .deck-status-panel { width: min(900px, 100%); height: min(760px, 100%); display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto; overflow: hidden; }
 .deck-status-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid #675771; color: var(--muted); background: #17121f; font-size: 8px; }
@@ -640,40 +660,41 @@ button { -webkit-tap-highlight-color: transparent; }
 .primary-button:disabled { cursor: wait; opacity: .72; filter: saturate(.7); }
 .primary-button.danger-action { color: #421d29; background: var(--danger); }
 
-.shop-panel-inner { width: min(940px, 100%); }
+.shop-panel-inner { width: min(820px, 100%); padding: 18px; }
+.shop-panel-inner .modal-lead { margin-bottom: 10px; font-size: 9px; }
 .shop-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .shop-heading h1 { margin-bottom: 2px; }
 .shop-wallet { min-width: 94px; padding: 9px 12px; border: 2px solid #69536b; color: var(--gold); background: #17121f; text-align: right; }
 .shop-wallet span { display: block; color: var(--muted); font-size: 8px; }
 .shop-wallet strong { font-size: 20px; }
-.shop-plate-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -7px 0 10px; padding: 8px 10px; border: 1px solid #4f5e57; color: #a9bbae; background: #15201c; font-size: 7px; line-height: 1.5; }
+.shop-plate-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -3px 0 7px; padding: 7px 9px; border: 1px solid #4f5e57; color: #a9bbae; background: #15201c; font-size: 7px; line-height: 1.4; }
 .shop-plate-summary b { color: var(--eat); }
-.plate-upgrade-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; padding: 10px; border: 1px solid #765d84; background: #241d2f; }
+.plate-upgrade-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 8px; padding: 8px; border: 1px solid #765d84; background: #241d2f; }
 .plate-upgrade-row > span { display: grid; gap: 4px; }
 .plate-upgrade-row b { color: var(--gold); font-size: 10px; }
 .plate-upgrade-row small { color: var(--muted); font-size: 7px; }
 .plate-upgrade-row .shop-reroll-button { min-width: 210px; }
-.shop-section-title { display: flex; align-items: baseline; justify-content: space-between; margin: 17px 0 9px; padding-bottom: 7px; border-bottom: 2px solid #4c3e58; }
+.shop-section-title { display: flex; align-items: baseline; justify-content: space-between; margin: 11px 0 7px; padding-bottom: 5px; border-bottom: 2px solid #4c3e58; }
 .shop-section-title span { color: var(--paper); font-size: 12px; font-weight: 900; }
 .shop-section-title small { color: var(--muted); font-size: 8px; }
 .shop-section-title b { color: var(--gold); }
 .shop-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .shop-item-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.shop-item-card { position: relative; min-height: 94px; display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 11px; padding: 11px 12px 24px; border: 2px solid #4d5f59; color: var(--paper); background: #24312f; box-shadow: 4px 4px 0 #0b0911; text-align: left; cursor: pointer; }
+.shop-item-card { position: relative; min-height: 82px; display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 9px; padding: 9px 10px 22px; border: 2px solid #4d5f59; color: var(--paper); background: #24312f; box-shadow: 4px 4px 0 #0b0911; text-align: left; cursor: pointer; }
 .shop-item-card:hover { border-color: var(--eat); }
-.shop-item-icon { width: 50px; height: 50px; border: 1px solid #557268; background-color: #151d1a; background-size: var(--meta-size-x, 400%) var(--meta-size-y, 400%); background-position: var(--meta-x) var(--meta-y); }
+.shop-item-icon { width: 44px; height: 44px; place-self: start center; border: 1px solid #557268; background-color: #111015; background-size: var(--meta-size-x, 400%) var(--meta-size-y, 400%); background-position: var(--meta-x) var(--meta-y); }
 .shop-item-card > span:nth-child(2) { display: flex; min-width: 0; flex-direction: column; }
 .shop-item-card small { color: #86a494; font-size: 7px; }
 .shop-item-card strong { margin-top: 4px; font-size: 12px; }
 .shop-item-card em { margin-top: 6px; color: #b6c8bc; font-size: 8px; font-style: normal; line-height: 1.45; }
 .shop-card {
   position: relative;
-  min-height: 142px;
+  min-height: 118px;
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr);
   align-items: start;
   gap: 12px;
-  padding: 12px;
+  padding: 10px;
   border: 2px solid #53425f;
   color: var(--paper);
   background: #2c2439;
@@ -690,11 +711,11 @@ button { -webkit-tap-highlight-color: transparent; }
 .shop-card-copy i { color: #8e7e99; }
 .shop-card-copy .shop-price-note { margin-top: 7px; padding-top: 5px; border-top: 1px dashed #51445c; color: var(--gold); }
 .price-tag { position: absolute; right: 8px; bottom: 8px; padding: 4px 6px; color: #352717; background: var(--gold); font-size: 9px; font-weight: 900; }
-.shop-reroll-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 13px 0 4px; }
+.shop-reroll-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 9px 0 3px; }
 .shop-reroll-row small { color: #887890; font-size: 7px; text-align: right; }
 .shop-reroll-button { min-width: 190px; min-height: 38px; display: grid; place-items: center; padding: 9px 12px; border: 2px solid #765d84; color: var(--gold); background: #241d2f; box-shadow: 3px 3px 0 #09070d; cursor: pointer; font-weight: 900; line-height: 1.25; text-align: center; }
 .shop-reroll-button:disabled { color: #706477; border-color: #463b4e; cursor: not-allowed; box-shadow: none; }
-.deck-manager { max-height: 150px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; padding: 3px; overflow: auto; }
+.deck-manager { max-height: 120px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 3px; overflow: auto; }
 .deck-chip { min-width: 0; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 2px 7px; padding: 7px; border: 1px solid #554761; color: var(--paper); background: #282131; text-align: left; cursor: pointer; }
 .deck-chip > span { grid-row: span 3; place-self: center; width: 30px; height: 30px; border: 1px solid #493b52; background-color: #18131f; background-clip: padding-box; transform-origin: center; filter: hue-rotate(var(--sprite-hue, 0deg)) drop-shadow(2px 2px 0 rgba(0,0,0,.3)); }
 .deck-chip b { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
@@ -729,6 +750,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .brand small, .phase-chip { font-size: 7px; }
   .phase-chip { padding: 5px 7px; }
   .icon-button { width: 31px; height: 31px; font-size: 16px; }
+  .phase-chip { display: none; }
   .hud { gap: 3px; padding: 6px; }
   .hud-cell { padding: 5px 4px; border-left-width: 2px; text-align: center; }
   .hud-cell span { font-size: 7px; }
@@ -773,6 +795,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .shop-grid { grid-template-columns: 1fr; }
   .shop-item-grid { grid-template-columns: 1fr; }
   .shop-card { min-height: 118px; }
+  .shop-panel-inner { padding: 12px 11px; }
   .shop-reroll-row { align-items: stretch; flex-direction: column; }
   .shop-reroll-row small { text-align: left; }
   .plate-upgrade-row { align-items: stretch; flex-direction: column; }
@@ -786,6 +809,9 @@ button { -webkit-tap-highlight-color: transparent; }
   .keyword-glossary > div { grid-template-columns: 1fr; }
   .deck-status-summary { align-items: flex-start; flex-direction: column; }
   .deck-status-summary span { text-align: left; }
+  .collection-status-panel { height: 100%; padding: 14px 12px; }
+  .collection-status-list { grid-template-columns: 1fr; }
+  .collection-status-summary { align-items: flex-start; flex-direction: column; }
   .shop-plate-summary { align-items: flex-start; flex-direction: column; gap: 4px; }
   .delete-confirm-card { grid-template-columns: 58px 1fr; }
   .delete-confirm-card .game-sprite { width: 54px; height: 54px; }

@@ -1,5 +1,5 @@
 export const GAME_CONFIG = Object.freeze({
-  schema_version: 10,
+  schema_version: 11,
   total_rounds: 15,
   draft_size: 3,
   quest_interval: 3,

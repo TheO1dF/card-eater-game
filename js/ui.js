@@ -80,7 +80,7 @@ function setText(node, value) {
 function metaStyle(entry) {
   const x = entry.icon_x * 100 / Math.max(1, entry.icon_columns - 1);
   const y = entry.icon_y * 100 / Math.max(1, entry.icon_rows - 1);
-  return `--meta-image:url('./assets/${entry.icon_atlas}?v=13');--meta-size-x:${entry.icon_columns * 100}%;--meta-size-y:${entry.icon_rows * 100}%;--meta-x:${x}%;--meta-y:${y}%;`;
+  return `--meta-image:url('./assets/${entry.icon_atlas}?v=14');--meta-size-x:${entry.icon_columns * 100}%;--meta-size-y:${entry.icon_rows * 100}%;--meta-x:${x}%;--meta-y:${y}%;`;
 }
 
 function itemElement(entry) {
@@ -97,9 +97,10 @@ function shopItemElement(entry, onBuy) {
   button.type = "button";
   const unlockRound = entry.min_shop_round ?? 1;
   const tier = unlockRound >= 4 || entry.shop_price >= 8 ? "核心" : unlockRound >= 2 || entry.shop_price >= 5 ? "进阶" : "基础";
+  const roundRange = entry.max_shop_round ? `第 ${unlockRound}–${entry.max_shop_round} 轮` : `第 ${unlockRound} 轮起`;
   button.innerHTML = `
     <span class="shop-item-icon meta-sprite" style="${metaStyle(entry)}"></span>
-    <span><small>${tier}道具 · ${entry.role} · 第 ${unlockRound} 轮起</small><strong>${entry.name}</strong><em>${entry.description}</em></span>
+    <span><small>${tier}道具 · ${entry.role} · ${roundRange}</small><strong>${entry.name}</strong><em>${entry.description}</em></span>
     <b class="price-tag">$ ${entry.shop_price}</b>
   `;
   button.addEventListener("click", () => onBuy(entry));
@@ -154,6 +155,27 @@ function ruleElement(rule, onChoose) {
   `;
   button.addEventListener("click", () => onChoose(rule), { once: true });
   return button;
+}
+
+function selectedRuleElement(rule, index) {
+  const article = document.createElement("article");
+  article.className = "collection-status-card rule-status-card";
+  article.innerHTML = `
+    <span class="collection-index">${String(index + 1).padStart(2, "0")}</span>
+    <span><small>第 ${getRuleUnlockRound(rule)} 轮起 · 永久规则</small><strong>${rule.name}</strong><em>${rule.description}</em></span>
+    <b>${rule.multiplier === 1 ? `+${rule.bonus ?? 1}` : `×${rule.multiplier}`}</b>
+  `;
+  return article;
+}
+
+function ownedItemElement(entry) {
+  const article = document.createElement("article");
+  article.className = "collection-status-card item-status-card";
+  article.innerHTML = `
+    <span class="collection-item-icon meta-sprite" style="${metaStyle(entry)}"></span>
+    <span><small>${entry.rarity} · ${entry.role}</small><strong>${entry.name}</strong><em>${entry.description}</em></span>
+  `;
+  return article;
 }
 
 function shopCardElement(card, onBuy) {
@@ -216,6 +238,8 @@ export function createUI(root) {
     deleteConfirm: get("#deleteConfirm"),
     questStatus: get("#questStatus"), questInfoButton: get("#questInfoButton"),
     deckStatus: get("#deckStatus"), deckInfoButton: get("#deckInfoButton"),
+    ruleStatus: get("#ruleStatus"), ruleInfoButton: get("#ruleInfoButton"),
+    itemStatus: get("#itemStatus"), itemInfoButton: get("#itemInfoButton"),
   };
 
   function closeDeleteConfirmation() {
@@ -247,7 +271,12 @@ export function createUI(root) {
     if (event.target === nodes.deleteConfirm) closeDeleteConfirmation();
   });
   root.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && nodes.deleteConfirm?.classList.contains("show")) closeDeleteConfirmation();
+    if (event.key !== "Escape") return;
+    if (nodes.deleteConfirm?.classList.contains("show")) closeDeleteConfirmation();
+    nodes.questStatus?.classList.remove("show");
+    nodes.deckStatus?.classList.remove("show");
+    nodes.ruleStatus?.classList.remove("show");
+    nodes.itemStatus?.classList.remove("show");
   });
 
   function openDeckStatus(state) {
@@ -284,6 +313,8 @@ export function createUI(root) {
       .map(([keyword, description]) => `<div><b>【${keyword}】</b><span>${description}</span></div>`)
       .join("");
     nodes.questStatus?.classList.remove("show");
+    nodes.ruleStatus?.classList.remove("show");
+    nodes.itemStatus?.classList.remove("show");
     nodes.deckStatus?.classList.add("show");
   }
 
@@ -307,7 +338,33 @@ export function createUI(root) {
         : `<ul class="quest-history-list">${state.quest_history.map((history) => `<li class="${history.completed ? "success" : "failed"}"><b>${history.completed ? "✓" : "×"} ${history.name}</b><span>第 ${history.round} 轮 · ${history.reward}</span></li>`).join("")}</ul>`;
     }
     nodes.deckStatus?.classList.remove("show");
+    nodes.ruleStatus?.classList.remove("show");
+    nodes.itemStatus?.classList.remove("show");
     nodes.questStatus?.classList.add("show");
+  }
+
+  function openRuleStatus(state) {
+    const rules = state.active_rules;
+    get("#ruleStatusSummary").innerHTML = `<b>${rules.length} 条永久规则</b><span>只有达成各自条件时才参与本轮结算。</span>`;
+    const list = get("#ruleStatusList");
+    if (rules.length === 0) list.innerHTML = '<p class="collection-status-empty">尚未选择规则。每轮开始时会从三条规则中选择一条。</p>';
+    else list.replaceChildren(...rules.map(selectedRuleElement));
+    nodes.deckStatus?.classList.remove("show");
+    nodes.questStatus?.classList.remove("show");
+    nodes.itemStatus?.classList.remove("show");
+    nodes.ruleStatus?.classList.add("show");
+  }
+
+  function openItemStatus(state) {
+    const items = state.items;
+    get("#itemStatusSummary").innerHTML = `<b>${items.length} 件永久道具</b><span>任务奖励与商店购买都会记录在这里。</span>`;
+    const list = get("#itemStatusList");
+    if (items.length === 0) list.innerHTML = '<p class="collection-status-empty">尚未获得道具。商店道具购买后立即生效，任务奖励在下一轮生效。</p>';
+    else list.replaceChildren(...items.map(ownedItemElement));
+    nodes.deckStatus?.classList.remove("show");
+    nodes.questStatus?.classList.remove("show");
+    nodes.ruleStatus?.classList.remove("show");
+    nodes.itemStatus?.classList.add("show");
   }
 
   function renderItems(state) {
@@ -349,6 +406,20 @@ export function createUI(root) {
       nodes.deckInfoButton.onclick = () => {
         if (nodes.deckStatus?.classList.contains("show")) nodes.deckStatus.classList.remove("show");
         else openDeckStatus(state);
+      };
+    }
+    if (nodes.ruleInfoButton) {
+      nodes.ruleInfoButton.title = `查看已选择规则（${state.active_rules.length} 条）`;
+      nodes.ruleInfoButton.onclick = () => {
+        if (nodes.ruleStatus?.classList.contains("show")) nodes.ruleStatus.classList.remove("show");
+        else openRuleStatus(state);
+      };
+    }
+    if (nodes.itemInfoButton) {
+      nodes.itemInfoButton.title = `查看已获得道具（${state.items.length} 件）`;
+      nodes.itemInfoButton.onclick = () => {
+        if (nodes.itemStatus?.classList.contains("show")) nodes.itemStatus.classList.remove("show");
+        else openItemStatus(state);
       };
     }
     const reshuffleButton = get("#reshuffleButton");
@@ -423,6 +494,8 @@ export function createUI(root) {
       get("#finishRoundButton")?.addEventListener("click", onFinishRound);
       get("#questStatusClose")?.addEventListener("click", () => nodes.questStatus?.classList.remove("show"));
       get("#deckStatusClose")?.addEventListener("click", () => nodes.deckStatus?.classList.remove("show"));
+      get("#ruleStatusClose")?.addEventListener("click", () => nodes.ruleStatus?.classList.remove("show"));
+      get("#itemStatusClose")?.addEventListener("click", () => nodes.itemStatus?.classList.remove("show"));
     },
     setSoundState(enabled) {
       const button = get("#soundButton");
@@ -602,9 +675,14 @@ export function createUI(root) {
       plateUpgradeDetail.textContent = plateMaxed
         ? "已达到本局餐盘容量上限"
         : `当前 ${state.plate_capacity} 张 → ${state.plate_capacity + 1} 张${plateUpgradeStatus.discount > 0 ? ` · 量尺优惠 -${plateUpgradeStatus.discount}` : ""}`;
+      const fullPlateDiscount = state.deck.length <= state.plate_capacity
+        ? state.items
+          .filter((entry) => entry.effect?.kind === "full_plate_reroll_discount")
+          .reduce((sum, entry) => sum + (entry.effect.amount ?? 0), 0)
+        : 0;
       const rerollCost = state.round.shop_free_rerolls > 0
         ? 0
-        : GAME_CONFIG.shop_reroll_base_cost + state.round.shop_reroll_count * GAME_CONFIG.shop_reroll_cost_step;
+        : Math.max(1, GAME_CONFIG.shop_reroll_base_cost + state.round.shop_reroll_count * GAME_CONFIG.shop_reroll_cost_step - fullPlateDiscount);
       const rerollButton = get("#shopReroll");
       rerollButton.textContent = rerollCost === 0
         ? `免费刷新 · 剩余 ${state.round.shop_free_rerolls}`

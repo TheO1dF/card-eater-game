@@ -117,10 +117,6 @@ function rulePotential(rule, state) {
   let chance = 0.55;
   if (rule.scope === "flat_bonus") chance = matching > 0 ? 0.95 : 0;
   if (["perfect_sort", "no_negative_action", "last_action_positive"].includes(rule.scope)) chance = 0.85;
-  if (["min_reshuffles", "repeat_card_actions", "post_reshuffle_actions", "post_reshuffle_score"].includes(rule.scope)) {
-    chance = state.items.some((item) => item.effect?.kind === "round_reshuffle_charge")
-      || state.deck.some((card) => ["gain_reshuffle_charge", "gain_reshuffle_charge_destroy"].includes(card.effect?.kind)) ? 0.9 : 0.05;
-  }
   if (rule.scope === "max_deck_size") chance = state.deck.length <= rule.count ? 1 : 0;
   if (rule.scope === "min_deck_size") chance = state.deck.length >= rule.count ? 1 : 0.2;
   if (rule.scope === "time_limit") chance = 1;
@@ -187,13 +183,15 @@ function itemPurchaseValue(item, state, policy) {
   if (kind === "plate_upgrade_discount") value += policy === "large" ? 8 : 4;
   if (kind === "keyword_card_bonus") value += state.deck.filter((card) => card.effect?.keywords?.includes(item.effect.keyword)).length;
   if (kind === "generated_card_gold") value += state.deck.filter((card) => card.generated_from).length * 2;
-  if (kind === "keyword_first_gold") value += state.deck.some((card) => card.effect?.keywords?.includes(item.effect.keyword)) ? 5 : -2;
+  if (kind === "keyword_first_shop_discount") value += state.deck.some((card) => card.effect?.keywords?.includes(item.effect.keyword)) ? 6 : -2;
+  if (kind === "negative_action_free_reroll") value += state.deck.some((card) => card.eat_points < 0 || card.discard_points < 0) ? 5 : -2;
   if (kind === "compact_first_each_bonus") value += state.deck.length <= item.effect.maximum ? (policy === "small" ? 11 : 7) : -3;
   if (kind === "full_plate_reroll_discount") value += hasReserve ? 0 : 5;
-  if (["reserve_matching_type_bonus", "reserve_last_bonus", "reserve_first_action_bonus", "reserve_first_discard_gold"].includes(kind)) value += hasReserve ? 5 : 0;
+  if (["reserve_matching_type_bonus", "reserve_first_discard_gold", "reserve_purchase_refund", "reserve_threshold_multiplier"].includes(kind)) value += hasReserve ? 5 : 0;
+  if (kind === "first_correct_buff_next" || kind === "keyword_first_bonus") value += 4;
   if (kind === "singleton_name_bonus") value += state.deck.filter((card, index, deck) => deck.findIndex((owned) => owned.id === card.id) === index).length * 0.35;
   if (kind === "singleton_type_bonus") value += new Set(state.deck.map((card) => card.type)).size * 0.3;
-  if (["wrong_edibility_bonus", "lower_side_bonus", "plate_edge_bonus", "last_correct_action_bonus"].includes(kind)) value += 3;
+  if (["wrong_edibility_bonus", "wrong_eat_buff_next_discard", "lower_side_bonus", "plate_edge_bonus", "last_correct_action_bonus"].includes(kind)) value += 3;
   return value;
 }
 

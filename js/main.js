@@ -259,7 +259,8 @@ function enterShop() {
     (item) => {
       if (shopService.buyCard(state, item)) {
         shopBuffer = shopBuffer.filter((card) => card !== item);
-        ui.setShopMessage(`购入「${item.name}」，已加入永久牌组。`, "success");
+        const refund = state.last_shop_transaction?.refund ?? 0;
+        ui.setShopMessage(`购入「${item.name}」，已加入永久牌组${refund > 0 ? `；候补餐罩返还 ${refund} 金币` : ""}。`, "success");
       } else {
         const status = shopService.getBuyCardStatus(state, item);
         const message = {

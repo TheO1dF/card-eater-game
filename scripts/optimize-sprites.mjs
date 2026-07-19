@@ -295,17 +295,31 @@ const expression = `(async () => {
       const sourceY = Math.round(shopY * shopMetaSource.naturalHeight / shopMetaRows);
       const sourceRight = Math.round((shopX + 1) * shopMetaSource.naturalWidth / shopMetaColumns);
       const sourceBottom = Math.round((shopY + 1) * shopMetaSource.naturalHeight / shopMetaRows);
-      shopMetaContext.drawImage(
+      const rawShop = document.createElement("canvas");
+      rawShop.width = sourceRight - sourceX;
+      rawShop.height = sourceBottom - sourceY;
+      const rawShopContext = rawShop.getContext("2d", { alpha: true });
+      rawShopContext.imageSmoothingEnabled = false;
+      rawShopContext.drawImage(
         shopMetaSource,
         sourceX,
         sourceY,
         sourceRight - sourceX,
         sourceBottom - sourceY,
-        shopX * shopMetaCellOutput,
-        shopY * shopMetaCellOutput,
-        shopMetaCellOutput,
-        shopMetaCellOutput,
+        0,
+        0,
+        rawShop.width,
+        rawShop.height,
       );
+      const shopImageData = rawShopContext.getImageData(0, 0, rawShop.width, rawShop.height);
+      const shopPixels = shopImageData.data;
+      for (let pixel = 0; pixel < rawShop.width * rawShop.height; pixel += 1) {
+        const offset = pixel * 4;
+        if (Math.max(shopPixels[offset], shopPixels[offset + 1], shopPixels[offset + 2]) < 18) shopPixels[offset + 3] = 0;
+      }
+      rawShopContext.putImageData(shopImageData, 0, 0);
+      const normalizedShop = normalizeCard(rawShop, shopMetaCellOutput);
+      shopMetaContext.drawImage(normalizedShop, shopX * shopMetaCellOutput, shopY * shopMetaCellOutput);
     }
   }
   const shopMetaUrl = shopMetaAtlas.toDataURL("image/webp", quality);

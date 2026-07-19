@@ -59,6 +59,7 @@ export function createShopService(options = {}) {
   function getShopItems(state) {
     const pool = createShopItemPool().filter((entry) => (
       (entry.min_shop_round ?? 1) <= state.current_round
+      && (entry.max_shop_round ?? GAME_CONFIG.total_rounds) >= state.current_round
       && !state.items.some((owned) => owned.id === entry.id)
       && !state.pending_rewards?.some((reward) => reward.item_id === entry.id)
     ));
@@ -87,6 +88,17 @@ export function createShopService(options = {}) {
     const cleanCard = status.card;
     state.gold = safeAdd(state.gold, -card.shop_price);
     state.deck.push({ ...cleanCard, uuid: createId(cleanCard, state.deck.length) });
+    let refund = 0;
+    if (state.round.reserve_count > 0) {
+      for (const entry of state.items.filter((owned) => owned.effect?.kind === "reserve_purchase_refund")) {
+        const key = `item:${entry.id}:purchase-refund`;
+        if (state.round.effect_trigger_counts[key]) continue;
+        state.round.effect_trigger_counts[key] = 1;
+        refund = safeAdd(refund, Math.min(card.shop_price, entry.effect.gold ?? 0));
+      }
+    }
+    state.gold = safeAdd(state.gold, refund);
+    state.last_shop_transaction = { kind: "buy_card", card_name: cleanCard.name, cost: card.shop_price, refund };
     return true;
   }
 

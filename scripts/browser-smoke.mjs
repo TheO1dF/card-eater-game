@@ -195,8 +195,8 @@ for (const viewport of [
     return Boolean(button && style?.display !== "none" && style?.visibility !== "hidden");
   })()`);
   deckViewer.topbar_buttons_overlap = await evaluate(`(() => {
-    const selectors = ["#deckInfoButton", "#questInfoButton", "#soundButton", "#phaseValue"];
-    const rects = selectors.map((selector) => document.querySelector(selector)?.getBoundingClientRect()).filter(Boolean);
+    const selectors = ["#deckInfoButton", "#ruleInfoButton", "#itemInfoButton", "#questInfoButton", "#soundButton", "#phaseValue"];
+    const rects = selectors.map((selector) => document.querySelector(selector)?.getBoundingClientRect()).filter((rect) => rect && rect.width > 0 && rect.height > 0);
     return rects.some((left, index) => rects.slice(index + 1).some((right) => !(
       left.right <= right.left || right.right <= left.left || left.bottom <= right.top || right.bottom <= left.top
     )));
@@ -227,6 +227,26 @@ for (const viewport of [
   await capture(`${viewport.name}-deck-status`);
   await clickElement("#deckStatusClose");
   await waitFor('!document.querySelector("#deckStatus")?.classList.contains("show")');
+  const collections = {};
+  await clickElement("#ruleInfoButton");
+  await waitFor('document.querySelector("#ruleStatus")?.classList.contains("show")');
+  await wait(180);
+  collections.rule_status_visible = true;
+  collections.rule_status_count = await evaluate('document.querySelectorAll("#ruleStatusList .rule-status-card").length');
+  collections.rule_status_summary = await evaluate('document.querySelector("#ruleStatusSummary")?.textContent?.replace(/\\s+/g, " ").trim()');
+  await capture(`${viewport.name}-rule-status`);
+  await clickElement("#ruleStatusClose");
+  await waitFor('!document.querySelector("#ruleStatus")?.classList.contains("show")');
+  await clickElement("#itemInfoButton");
+  await waitFor('document.querySelector("#itemStatus")?.classList.contains("show")');
+  await wait(180);
+  collections.item_status_visible = true;
+  collections.item_status_count = await evaluate('document.querySelectorAll("#itemStatusList .item-status-card").length');
+  collections.item_status_summary = await evaluate('document.querySelector("#itemStatusSummary")?.textContent?.replace(/\\s+/g, " ").trim()');
+  collections.item_status_empty = await evaluate('Boolean(document.querySelector("#itemStatusList .collection-status-empty"))');
+  await capture(`${viewport.name}-item-status`);
+  await clickElement("#itemStatusClose");
+  await waitFor('!document.querySelector("#itemStatus")?.classList.contains("show")');
   let actions = 0;
   while (actions < 30) {
     const screen = await evaluate(`(() => {
@@ -294,8 +314,35 @@ for (const viewport of [
     plate_upgrade_label: document.querySelector("#shopPlateUpgrade")?.textContent,
     plate_upgrade_detail: document.querySelector("#shopPlateUpgradeDetail")?.textContent,
     loaded_sprite_sheets: [...document.querySelectorAll(".shop-card-icon")].map((node) => getComputedStyle(node).backgroundImage),
-    loaded_item_sprite_sheets: [...document.querySelectorAll(".shop-item-icon")].map((node) => getComputedStyle(node).backgroundImage)
+    loaded_item_sprite_sheets: [...document.querySelectorAll(".shop-item-icon")].map((node) => getComputedStyle(node).backgroundImage),
+    shop_panel_width: document.querySelector(".shop-panel-inner")?.getBoundingClientRect().width,
+    shop_panel_height: document.querySelector(".shop-panel-inner")?.getBoundingClientRect().height,
+    shop_panel_inside_viewport: (() => { const rect = document.querySelector(".shop-panel-inner")?.getBoundingClientRect(); return Boolean(rect && rect.left >= -1 && rect.right <= innerWidth + 1); })()
   })`);
+  shopState.item_icon_alignment = await evaluate(`(async () => {
+    const bitmap = await createImageBitmap(await fetch("./assets/shop-items-atlas-v013.webp?v=14").then((response) => response.blob()));
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    context.drawImage(bitmap, 0, 0);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const cellWidth = bitmap.width / 6;
+    const cellHeight = bitmap.height / 4;
+    const offsets = [];
+    for (let cell = 0; cell < 24; cell += 1) {
+      const startX = (cell % 6) * cellWidth;
+      const startY = Math.floor(cell / 6) * cellHeight;
+      let minX = cellWidth, minY = cellHeight, maxX = -1, maxY = -1;
+      for (let y = 0; y < cellHeight; y += 1) for (let x = 0; x < cellWidth; x += 1) {
+        const offset = ((startY + y) * bitmap.width + startX + x) * 4;
+        if (Math.max(pixels[offset], pixels[offset + 1], pixels[offset + 2]) < 28) continue;
+        minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+      }
+      offsets.push({ x: Math.abs((minX + maxX) / 2 - cellWidth / 2), y: Math.abs((minY + maxY) / 2 - cellHeight / 2) });
+    }
+    return { offsets, maximum: Math.max(...offsets.flatMap((offset) => [offset.x, offset.y])) };
+  })()`);
   const secondRound = { second_round_attempted: false };
   if (shopState.shop_visible) {
     secondRound.second_round_attempted = true;
@@ -414,7 +461,7 @@ for (const viewport of [
       }
     }
   }
-  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, audio_overflow_safe: audioOverflowSafe, ...onboarding, ...draftGoal, ...state, ...visuals, ...deckViewer, actions, ...roundComplete, ...deleteConfirmation, ...shopState, ...secondRound });
+  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, audio_overflow_safe: audioOverflowSafe, ...onboarding, ...draftGoal, ...state, ...visuals, ...deckViewer, ...collections, actions, ...roundComplete, ...deleteConfirmation, ...shopState, ...secondRound });
 }
 
 socket.close();
@@ -431,18 +478,23 @@ for (const report of reports) {
   fail(report.tiers?.length === 3, "规则卡缺少分层标签");
   fail(report.body_width <= report.viewport_width, "游戏页面横向溢出");
   fail(report.plate_background?.includes("radial-gradient") && report.plate_radius === "50%", "餐盘未渲染为白色圆盘");
-  fail(report.card_art_background?.includes("radial-gradient"), "卡图没有放在盘面背景中央");
+  fail(!report.card_art_background?.includes("radial-gradient"), "卡牌卡图仍然绘制餐盘背景");
   fail(report.empty_plate_visible === true, "吃完牌后没有留下可见餐盘");
   fail((report.eat_center_offset ?? 99) <= 2 && (report.discard_center_offset ?? 99) <= 2, "吃弃按钮文字或符号未居中");
   fail(report.eat_layout?.align === "center" && report.eat_layout?.justify === "center", "吃牌按钮布局未居中");
   fail(report.sound_layout?.display === "grid" && report.sound_layout?.align === "center", "手机顶栏图标未居中");
   fail(report.topbar_buttons_overlap === false, "顶栏按钮互相遮挡");
+  fail(report.rule_status_visible === true && report.rule_status_count === 1, "无法随时查看已选择规则");
+  fail(report.item_status_visible === true && report.item_status_empty === true, "无法随时查看已获得道具");
   fail(report.deck_horizontal_overflow === false, "牌组面板横向溢出");
   fail(report.card_count > 0 && report.effect_count === report.card_count, "牌组面板没有完整显示卡牌效果");
   fail(report.capacity_cell_count === 4, "牌组面板缺少餐盘容量信息");
   fail(report.summary_visible === true, "第一轮未正常结算");
   fail(report.shop_visible === true && report.offer_count === 3 && report.item_offer_count === 3, "商店商品数量异常");
+  fail(report.shop_panel_inside_viewport === true, "缩小后的商店仍横向溢出");
+  fail(report.viewport !== "desktop" || report.shop_panel_width <= 830, "桌面商店宽度未缩小");
   fail(report.loaded_item_sprite_sheets?.every((image) => image.includes("shop-items-atlas-v013.webp")), "商店道具未加载新版独立图集");
+  fail((report.item_icon_alignment?.maximum ?? 99) <= 2.5, "道具图标主体没有在图集中居中");
   fail(report.attempted === true && report.dialog_role === "alertdialog", "删牌确认浮窗未打开");
   fail(report.deck_while_open === report.deck_before, "打开确认浮窗时牌已被误删");
   fail(report.deck_after_cancel === report.deck_before, "取消删牌后牌组发生变化");

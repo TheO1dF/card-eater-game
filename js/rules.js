@@ -59,10 +59,10 @@ export const RULE_LIBRARY = Object.freeze([
   { id: "sacrifice-payoff-15", name: "绝境爆发", description: "负分吃牌后打出单张 15+ 分：本轮 ×2.5", scope: "sacrifice_then_score", score: 15, multiplier: 2.5, min_round: 6 },
   { id: "unique-eat-3", name: "环球菜单", description: "吃牌包含至少 3 种类别：本轮 ×1.5", scope: "unique_eat_types", count: 3, multiplier: 1.5, min_round: 2 },
   { id: "unique-discard-3", name: "垃圾分类大师", description: "弃牌包含至少 3 种类别：本轮 ×1.5", scope: "unique_discard_types", count: 3, multiplier: 1.5, min_round: 2 },
-  { id: "tiny-deck-8", name: "袖珍牌组", description: "牌组不超过 8 张：本轮 ×1.6", scope: "max_deck_size", count: 8, multiplier: 1.6, min_round: 4 },
-  { id: "lean-deck-10", name: "精简主义", description: "牌组不超过 10 张：本轮 ×1.17", scope: "max_deck_size", count: 10, multiplier: 1.17 },
-  { id: "big-deck-12", name: "百纳食袋", description: "牌组达到 12 张：本轮 ×1.05", scope: "min_deck_size", count: 12, multiplier: 1.05, min_round: 4 },
-  { id: "big-deck-16", name: "无底胃袋", description: "牌组达到 16 张：本轮 ×1.1", scope: "min_deck_size", count: 16, multiplier: 1.1, min_round: 8 },
+  { id: "tiny-deck-8", name: "袖珍牌组", description: "牌组不超过 8 张：本轮 ×1.75", scope: "max_deck_size", count: 8, multiplier: 1.75, min_round: 4 },
+  { id: "lean-deck-10", name: "精简主义", description: "牌组不超过 10 张：本轮 ×1.25", scope: "max_deck_size", count: 10, multiplier: 1.25 },
+  { id: "big-deck-12", name: "百纳食袋", description: "牌组达到 12 张：本轮 ×1.02", scope: "min_deck_size", count: 12, multiplier: 1.02, min_round: 4 },
+  { id: "big-deck-16", name: "无底胃袋", description: "牌组达到 16 张：本轮 ×1.05", scope: "min_deck_size", count: 16, multiplier: 1.05, min_round: 8 },
   { id: "raw-score-30", name: "火力达标", description: "倍率前牌面与效果达到 30 分：本轮 ×1.3", scope: "round_card_score", score: 30, multiplier: 1.3, min_round: 3 },
   { id: "raw-score-70", name: "火力全开", description: "倍率前牌面与效果达到 70 分：本轮 ×1.7", scope: "round_card_score", score: 70, multiplier: 1.7, min_round: 7 },
   { id: "alternating-4", name: "吃弃四拍", description: "连续 4 次交替吃与弃：本轮 ×1.45", scope: "alternating_actions", count: 4, multiplier: 1.45, min_round: 2 },
@@ -74,13 +74,7 @@ export const RULE_LIBRARY = Object.freeze([
   { id: "discard-ratio-2", name: "弃多于吃", description: "至少弃 4 张且弃牌数达到吃牌数 2 倍：本轮 ×1.7", scope: "discard_ratio", minimum: 4, ratio: 2, multiplier: 1.7, min_round: 3 },
   { id: "discard-food-2", name: "忍痛断舍", description: "主动弃掉至少 2 张可食用牌：本轮 ×1.8", scope: "min_discard_food", count: 2, multiplier: 1.8, min_round: 3 },
   { id: "discard-7", name: "清仓狂潮", description: "至少弃 7 张牌：本轮 ×2.2", scope: "min_discard", count: 7, multiplier: 2.2, min_round: 5 },
-  { id: "micro-deck-7", name: "掌心引擎", description: "牌组不超过 7 张：本轮 ×1.8", scope: "max_deck_size", count: 7, multiplier: 1.8, min_round: 3 },
-  { id: "reshuffle-1", name: "再来一遍", description: "本轮至少重洗 1 次：本轮 ×1.25", scope: "min_reshuffles", count: 1, multiplier: 1.25, min_round: 4, requires_reshuffle: true },
-  { id: "reshuffle-2", name: "循环过载", description: "本轮至少重洗 2 次：本轮 ×1.5", scope: "min_reshuffles", count: 2, multiplier: 1.5, min_round: 7, requires_reshuffle: true },
-  { id: "repeat-card-2", name: "熟能生巧", description: "同一张牌本轮触发至少 2 次：本轮 ×1.35", scope: "repeat_card_actions", count: 2, multiplier: 1.35, min_round: 5, requires_reshuffle: true },
-  { id: "repeat-card-3", name: "永动节拍", description: "同一张牌本轮触发至少 3 次：本轮 ×1.7", scope: "repeat_card_actions", count: 3, multiplier: 1.7, min_round: 8, requires_reshuffle: true },
-  { id: "post-reshuffle-5", name: "回锅加热", description: "重洗后再处理至少 5 张牌：本轮 ×1.35", scope: "post_reshuffle_actions", count: 5, multiplier: 1.35, min_round: 5, requires_reshuffle: true },
-  { id: "post-reshuffle-score-20", name: "二次盛宴", description: "重洗后的牌面与效果达到 20 分：本轮 ×1.5", scope: "post_reshuffle_score", score: 20, multiplier: 1.5, min_round: 7, requires_reshuffle: true },
+  { id: "micro-deck-7", name: "掌心引擎", description: "牌组不超过 7 张：本轮 ×2", scope: "max_deck_size", count: 7, multiplier: 2, min_round: 3 },
   { id: "last-celestial-discard", name: "行星落幕", description: "最后一张行动是弃掉星体：本轮 ×1.55", scope: "last_action", action: "discard", target_type: "星体", multiplier: 1.55, min_round: 3 },
   { id: "last-animal-discard", name: "兽群收尾", description: "最后一张行动是弃掉动物：本轮 ×1.6", scope: "last_action", action: "discard", target_type: "动物", multiplier: 1.6, min_round: 3 },
   { id: "eat-then-discard-ends", name: "先尝后清", description: "第一张吃、最后一张弃：本轮 ×1.65", scope: "first_last_actions", first_action: "eat", last_action: "discard", multiplier: 1.65, min_round: 3 },
@@ -149,7 +143,7 @@ function weightedPick(candidates, deck, random) {
 }
 
 function ruleArchetype(rule) {
-  if (["min_reshuffles", "repeat_card_actions", "post_reshuffle_actions", "post_reshuffle_score", "max_deck_size"].includes(rule.scope)) return "small-deck";
+  if (rule.scope === "max_deck_size") return "small-deck";
   if (rule.scope === "min_deck_size") return "big-deck";
   if (["last_action", "first_last_actions"].includes(rule.scope)) return "position";
   if (["min_destroyed", "min_generated", "min_grown", "min_keyword_actions"].includes(rule.scope)) return "engine";

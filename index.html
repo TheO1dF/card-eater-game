@@ -14,7 +14,7 @@
     <link rel="preload" href="./assets/cards/c001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
     <link rel="preload" href="./assets/cards/a001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
     <link rel="preload" href="./assets/cards/u001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="stylesheet" href="./styles.css?v=13" />
+    <link rel="stylesheet" href="./styles.css?v=14" />
   </head>
   <body>
     <main class="app" id="app">
@@ -27,6 +27,8 @@
           <div class="topbar-actions">
             <span class="phase-chip" id="phaseValue">准备中</span>
             <button class="icon-button deck-info-button" id="deckInfoButton" type="button" aria-label="随时查看牌组">组</button>
+            <button class="icon-button rule-info-button" id="ruleInfoButton" type="button" aria-label="随时查看已选规则">规</button>
+            <button class="icon-button item-info-button" id="itemInfoButton" type="button" aria-label="随时查看已选道具">具</button>
             <button class="icon-button quest-info-button" id="questInfoButton" type="button" aria-label="随时查看当前任务" disabled>任</button>
             <button class="icon-button" id="soundButton" type="button" aria-label="切换声音" aria-pressed="true">♪</button>
           </div>
@@ -138,6 +140,26 @@
           </section>
         </div>
 
+        <div class="overlay collection-overlay" id="ruleStatus" role="dialog" aria-modal="true" aria-labelledby="ruleStatusTitle">
+          <section class="modal-panel collection-status-panel">
+            <div class="eyebrow">PERMANENT RULES · 随时可查</div>
+            <h1 id="ruleStatusTitle">已选择的规则</h1>
+            <div class="collection-status-summary" id="ruleStatusSummary"></div>
+            <div class="collection-status-list" id="ruleStatusList"></div>
+            <button class="primary-button" id="ruleStatusClose" type="button">返回游戏</button>
+          </section>
+        </div>
+
+        <div class="overlay collection-overlay" id="itemStatus" role="dialog" aria-modal="true" aria-labelledby="itemStatusTitle">
+          <section class="modal-panel collection-status-panel">
+            <div class="eyebrow">OWNED ITEMS · 随时可查</div>
+            <h1 id="itemStatusTitle">已获得的道具</h1>
+            <div class="collection-status-summary" id="itemStatusSummary"></div>
+            <div class="collection-status-list" id="itemStatusList"></div>
+            <button class="primary-button" id="itemStatusClose" type="button">返回游戏</button>
+          </section>
+        </div>
+
         <div class="overlay deck-overlay" id="deckStatus" role="dialog" aria-modal="true" aria-labelledby="deckStatusTitle">
           <section class="modal-panel deck-status-panel">
             <div class="eyebrow">PERMANENT DECK · 随时可查</div>
@@ -214,6 +236,6 @@
         </div>
       </section>
     </main>
-    <script type="module" src="./js/main.js?v=13"></script>
+    <script type="module" src="./js/main.js?v=14"></script>
   </body>
 </html>
