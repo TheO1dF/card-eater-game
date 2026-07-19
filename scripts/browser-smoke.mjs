@@ -116,10 +116,30 @@ for (const viewport of [
     await evaluate('HTMLImageElement.prototype.decode = () => new Promise(() => {})');
   }
   await capture(`${viewport.name}-welcome`);
+  const onboarding = await evaluate(`(() => {
+    const panel = document.querySelector(".welcome-panel");
+    const objective = document.querySelector(".welcome-objective");
+    const loop = document.querySelector(".welcome-loop");
+    const rect = panel?.getBoundingClientRect();
+    return {
+      objective_text: objective?.textContent?.replace(/\\s+/g, " ").trim(),
+      loop_step_count: loop?.children.length ?? 0,
+      welcome_horizontal_overflow: Boolean(rect && (rect.left < -1 || rect.right > innerWidth + 1)),
+      start_button_visible: Boolean(document.querySelector("#startGameButton")?.getBoundingClientRect().height),
+    };
+  })()`);
   await clickElement("#startGameButton");
   await waitFor('document.querySelectorAll(".rule-card").length > 0');
+  await wait(180);
   await capture(`${viewport.name}-draft`);
   const draftCount = await evaluate('document.querySelectorAll(".rule-card").length');
+  const draftGoal = await evaluate(`(() => ({
+    target: document.querySelector("#draftTargetText")?.textContent,
+    progress: document.querySelector("#draftTargetProgress")?.textContent,
+    fill_width: document.querySelector("#draftTargetFill")?.style.width,
+    help: document.querySelector(".rule-help")?.textContent?.replace(/\\s+/g, " ").trim(),
+    tiers: [...document.querySelectorAll(".rule-tier")].map((node) => node.textContent),
+  }))()`);
   const audioBeforeRule = await evaluate('(async () => (await import("./js/audio.js")).getAudioStatus())()');
   const audioOverflowSafe = await evaluate(`(async () => {
     const audio = await import("./js/audio.js");
@@ -196,11 +216,32 @@ for (const viewport of [
     gold: Number(document.querySelector("#goldValue")?.textContent),
     remaining: Number.parseInt(document.querySelector("#remainingValue")?.textContent ?? "0", 10)
   })`);
+  const deleteConfirmation = { attempted: false };
   if (roundComplete.summary_visible) {
     await clickElement("#summaryContinueBtn");
     await waitFor('document.querySelector("#shopPanel")?.classList.contains("show")');
     await wait(350);
     await capture(`${viewport.name}-shop`);
+    deleteConfirmation.attempted = true;
+    deleteConfirmation.deck_before = await evaluate('document.querySelectorAll("#shopDeckList .deck-chip").length');
+    await clickElement("#shopDeckList .deck-chip");
+    await waitFor('document.querySelector("#deleteConfirm")?.classList.contains("show")');
+    await wait(180);
+    deleteConfirmation.dialog_role = await evaluate('document.querySelector("#deleteConfirm")?.getAttribute("role")');
+    deleteConfirmation.warning = await evaluate('document.querySelector("#deleteConfirmWarning")?.textContent');
+    deleteConfirmation.accept_label = await evaluate('document.querySelector("#deleteConfirmAccept")?.textContent');
+    deleteConfirmation.deck_while_open = await evaluate('document.querySelectorAll("#shopDeckList .deck-chip").length');
+    await capture(`${viewport.name}-delete-confirm`);
+    await clickElement("#deleteConfirmCancel");
+    await waitFor('!document.querySelector("#deleteConfirm")?.classList.contains("show")');
+    deleteConfirmation.deck_after_cancel = await evaluate('document.querySelectorAll("#shopDeckList .deck-chip").length');
+    await clickElement("#shopDeckList .deck-chip");
+    await waitFor('document.querySelector("#deleteConfirm")?.classList.contains("show")');
+    await clickElement("#deleteConfirmAccept");
+    await waitFor('!document.querySelector("#deleteConfirm")?.classList.contains("show")');
+    await wait(180);
+    deleteConfirmation.deck_after_accept = await evaluate('document.querySelectorAll("#shopDeckList .deck-chip").length');
+    deleteConfirmation.message_after_accept = await evaluate('document.querySelector("#shopMessage")?.textContent');
   }
   const shopState = await evaluate(`({
     shop_visible: document.querySelector("#shopPanel")?.classList.contains("show"),
@@ -307,8 +348,18 @@ for (const viewport of [
         secondRound.reroll_item_offer_count = await evaluate('document.querySelectorAll(".shop-item-card").length');
         secondRound.buy_after_reroll_gold_before = secondRound.reroll_gold_after;
         secondRound.buy_after_reroll_offer_before = secondRound.reroll_offer_count;
-        await clickElement(".shop-card");
-        await wait(180);
+        const affordableCard = await evaluate(`(() => {
+          const gold = Number(document.querySelector("#shopGold")?.textContent);
+          const prices = [...document.querySelectorAll(".shop-card .price-tag")].map((node) => Number(node.textContent.replace(/[^0-9.-]/g, "")));
+          const index = prices.findIndex((price) => Number.isFinite(price) && price <= gold);
+          return { index, prices, gold };
+        })()`);
+        secondRound.buy_after_reroll_prices = affordableCard.prices;
+        secondRound.buy_after_reroll_affordable_index = affordableCard.index;
+        if (affordableCard.index >= 0) {
+          await clickElement(`.shop-card:nth-child(${affordableCard.index + 1})`);
+          await wait(180);
+        }
         secondRound.buy_after_reroll_gold_after = await evaluate('Number(document.querySelector("#shopGold")?.textContent)');
         secondRound.buy_after_reroll_offer_after = await evaluate('document.querySelectorAll(".shop-card").length');
         secondRound.buy_after_reroll_message = await evaluate('document.querySelector("#shopMessage")?.textContent');
@@ -319,8 +370,45 @@ for (const viewport of [
       }
     }
   }
-  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, audio_overflow_safe: audioOverflowSafe, ...state, ...deckViewer, actions, ...roundComplete, ...shopState, ...secondRound });
+  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, audio_overflow_safe: audioOverflowSafe, ...onboarding, ...draftGoal, ...state, ...deckViewer, actions, ...roundComplete, ...deleteConfirmation, ...shopState, ...secondRound });
 }
 
 socket.close();
-console.log(JSON.stringify({ reports, browser_errors: browserErrors }, null, 2));
+const failures = [];
+for (const report of reports) {
+  const fail = (condition, message) => { if (!condition) failures.push(`${report.viewport}: ${message}`); };
+  fail(report.draft_count === 3, "规则三选一数量异常");
+  fail(report.objective_text?.includes("100 / 500 / 1800"), "欢迎页未明确显示三阶段目标");
+  fail(report.loop_step_count === 3, "欢迎页缺少三步流程");
+  fail(report.welcome_horizontal_overflow === false, "欢迎页横向溢出");
+  fail(report.target?.includes("100"), "规则页未显示下一阶段目标");
+  fail(report.progress?.includes("还差") && report.progress?.includes("剩余"), "规则页缺少目标差值或剩余轮次");
+  fail(report.help?.includes("规则怎么用"), "规则页缺少简要说明");
+  fail(report.tiers?.length === 3, "规则卡缺少分层标签");
+  fail(report.body_width <= report.viewport_width, "游戏页面横向溢出");
+  fail(report.topbar_buttons_overlap === false, "顶栏按钮互相遮挡");
+  fail(report.deck_horizontal_overflow === false, "牌组面板横向溢出");
+  fail(report.card_count > 0 && report.effect_count === report.card_count, "牌组面板没有完整显示卡牌效果");
+  fail(report.capacity_cell_count === 4, "牌组面板缺少餐盘容量信息");
+  fail(report.summary_visible === true, "第一轮未正常结算");
+  fail(report.shop_visible === true && report.offer_count === 3 && report.item_offer_count === 3, "商店商品数量异常");
+  fail(report.attempted === true && report.dialog_role === "alertdialog", "删牌确认浮窗未打开");
+  fail(report.deck_while_open === report.deck_before, "打开确认浮窗时牌已被误删");
+  fail(report.deck_after_cancel === report.deck_before, "取消删牌后牌组发生变化");
+  fail(report.deck_after_accept === report.deck_before - 1, "确认删牌后牌组未恰好减少一张");
+  fail(report.message_after_accept?.includes("删除"), "确认删牌后缺少交易反馈");
+  fail(report.second_summary_visible === true && report.third_summary_visible === true, "未完成前三轮结算");
+  fail(report.quest_draft_count === 3 && report.quest_info_enabled === true, "第 3 轮任务流程异常");
+  fail(report.reroll_offer_count === 3 && report.reroll_item_offer_count === 3, "第 3 轮刷新未补齐商品");
+  fail(
+    report.buy_after_reroll_affordable_index < 0
+      || report.buy_after_reroll_offer_after === report.buy_after_reroll_offer_before - 1,
+    "金币充足时刷新后购买未正常完成",
+  );
+  fail(report.fourth_draft_visible === true, "未连续推进到第 4 轮");
+}
+if (browserErrors.length > 0) failures.push(`浏览器控制台错误：${browserErrors.join(" | ")}`);
+const finalReport = { reports, browser_errors: browserErrors, failures };
+await writeFile(resolve(outputDir, "report.json"), `${JSON.stringify(finalReport, null, 2)}\n`, "utf8");
+console.log(JSON.stringify(finalReport, null, 2));
+if (failures.length > 0) throw new Error(`Edge smoke failed:\n${failures.join("\n")}`);

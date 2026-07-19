@@ -6,6 +6,7 @@ import { KEYWORD_LIBRARY } from "./keywords.js";
 import { getCardById } from "./data.js";
 import { getPlateSummary } from "./plate.js";
 import { getReshuffleStatus } from "./reshuffle.js";
+import { getRuleUnlockRound } from "./rules.js";
 
 const PHASE_LABELS = Object.freeze({
   Init: "准备中", RuleDraft: "规则选择", QuestDraft: "任务选择", Playing: "出牌中", Scoring: "结算中",
@@ -94,9 +95,11 @@ function shopItemElement(entry, onBuy) {
   const button = document.createElement("button");
   button.className = "shop-item-card";
   button.type = "button";
+  const unlockRound = entry.min_shop_round ?? 1;
+  const tier = unlockRound >= 4 || entry.shop_price >= 8 ? "核心" : unlockRound >= 2 || entry.shop_price >= 5 ? "进阶" : "基础";
   button.innerHTML = `
     <span class="shop-item-icon meta-sprite" style="${metaStyle(entry)}"></span>
-    <span><small>${entry.rarity} · ${entry.role}</small><strong>${entry.name}</strong><em>${entry.description}</em></span>
+    <span><small>${tier}道具 · ${entry.role} · 第 ${unlockRound} 轮起</small><strong>${entry.name}</strong><em>${entry.description}</em></span>
     <b class="price-tag">$ ${entry.shop_price}</b>
   `;
   button.addEventListener("click", () => onBuy(entry));
@@ -142,9 +145,11 @@ function ruleElement(rule, onChoose) {
   const button = document.createElement("button");
   button.className = "rule-card";
   button.type = "button";
+  const unlockRound = getRuleUnlockRound(rule);
+  const tier = unlockRound >= 6 ? "后期" : unlockRound >= 3 ? "进阶" : "基础";
   button.innerHTML = `
     <span class="rule-icon">✦</span>
-    <span class="rule-copy"><small>永久规则 · 本局不重复</small><strong>${rule.name}</strong><em>${rule.description}</em></span>
+    <span class="rule-copy"><small class="rule-tier">${tier}规则 · 第 ${unlockRound} 轮起</small><strong>${rule.name}</strong><em>${rule.description}</em></span>
     <span class="rule-multiplier">${rule.multiplier === 1 ? `+${rule.bonus ?? 1}` : `×${rule.multiplier}`}</span>
   `;
   button.addEventListener("click", () => onChoose(rule), { once: true });
@@ -208,9 +213,42 @@ export function createUI(root) {
     draft: get("#ruleDraft"), draftList: get("#ruleDraftList"), summary: get("#roundSummary"),
     quest: get("#questDraft"), questList: get("#questDraftList"),
     shop: get("#shopPanel"), shopOffers: get("#shopOfferList"), shopItems: get("#shopItemOfferList"), shopDeck: get("#shopDeckList"), welcome: get("#welcomeOverlay"),
+    deleteConfirm: get("#deleteConfirm"),
     questStatus: get("#questStatus"), questInfoButton: get("#questInfoButton"),
     deckStatus: get("#deckStatus"), deckInfoButton: get("#deckInfoButton"),
   };
+
+  function closeDeleteConfirmation() {
+    nodes.deleteConfirm?.classList.remove("show");
+  }
+
+  function openDeleteConfirmation(card, cost, onRemove) {
+    const preview = get("#deleteConfirmCard");
+    preview.innerHTML = `
+      <span class="game-sprite" style="${spriteStyle(card)}"></span>
+      <span class="delete-confirm-copy">
+        <strong>${card.name}</strong>
+        <small>${card.rarity} · ${card.type} · ${EDIBILITY_LABEL[card.edibility]}</small>
+        <em>吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}<br />${card.effect?.description ?? "无额外效果"}</em>
+      </span>
+    `;
+    setText(get("#deleteConfirmWarning"), `确认支付 ${cost} 金币删除「${card.name}」？删除不可撤销，也不会返还金币。`);
+    const accept = get("#deleteConfirmAccept");
+    accept.textContent = `确认删除 · $${cost}`;
+    accept.onclick = () => {
+      closeDeleteConfirmation();
+      onRemove(card.uuid);
+    };
+    get("#deleteConfirmCancel").onclick = closeDeleteConfirmation;
+    nodes.deleteConfirm?.classList.add("show");
+  }
+
+  nodes.deleteConfirm?.addEventListener("click", (event) => {
+    if (event.target === nodes.deleteConfirm) closeDeleteConfirmation();
+  });
+  root.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && nodes.deleteConfirm?.classList.contains("show")) closeDeleteConfirmation();
+  });
 
   function openDeckStatus(state) {
     const grouped = new Map();
@@ -429,8 +467,13 @@ export function createUI(root) {
     },
     openRuleDraft(options, state, onChoose) {
       const milestone = getNextMilestone(state.current_round);
+      const scoreNeeded = Math.max(0, milestone.target - state.total_score);
+      const roundsRemaining = Math.max(1, milestone.round - state.current_round + 1);
+      const progress = milestone.target > 0 ? Math.max(0, Math.min(100, state.total_score / milestone.target * 100)) : 100;
       setText(get("#draftRoundValue"), String(state.current_round).padStart(2, "0"));
-      setText(get("#draftTargetText"), `第 ${milestone.round} 轮 · ${milestone.target} 分 · 已有 ${state.active_rules.length} 条`);
+      setText(get("#draftTargetText"), `第 ${milestone.round} 轮结算前累计达到 ${formatScore(milestone.target)} 分`);
+      setText(get("#draftTargetProgress"), `当前 ${formatScore(state.total_score)} · 还差 ${formatScore(scoreNeeded)} · 剩余 ${roundsRemaining} 轮 · 已有 ${state.active_rules.length} 条规则`);
+      get("#draftTargetFill")?.style.setProperty("width", `${progress}%`);
       nodes.draftList.replaceChildren(...options.map((rule) => ruleElement(rule, onChoose)));
       nodes.draft.classList.add("show");
     },
@@ -511,7 +554,7 @@ export function createUI(root) {
       } else {
         eyebrow.textContent = `ROUND ${String(state.current_round).padStart(2, "0")} CLEAR`;
         title.textContent = "本轮结算";
-        tip.textContent = `用时 ${(state.round.elapsed_ms / 1000).toFixed(1)} 秒 · 吃牌 ${result.gold_eaten} 次 · 基础金币 +${result.gold_reward}`;
+        tip.textContent = `用时 ${(state.round.elapsed_ms / 1000).toFixed(1)} 秒 · 吃牌动作 ${result.eat_actions} 次 · 计金实体牌 ${result.gold_eaten} 张 · 基础金币 +${result.gold_reward}`;
         button.textContent = "确认结算 · 进入商店";
         button.classList.remove("danger-action");
       }
@@ -543,7 +586,11 @@ export function createUI(root) {
       if (cards.length === 0) nodes.shopOffers.innerHTML = '<p class="empty-shop">商品售罄</p>';
       nodes.shopItems.replaceChildren(...itemOffers.map((entry) => shopItemElement(entry, onBuyItem)));
       if (itemOffers.length === 0) nodes.shopItems.innerHTML = '<p class="empty-shop">本局低级道具已售罄</p>';
-      nodes.shopDeck.replaceChildren(...state.deck.map((card) => deckChipElement(card, state.remove_card_cost, onRemove)));
+      nodes.shopDeck.replaceChildren(...state.deck.map((card) => deckChipElement(
+        card,
+        state.remove_card_cost,
+        () => openDeleteConfirmation(card, state.remove_card_cost, onRemove),
+      )));
       const plateUpgradeButton = get("#shopPlateUpgrade");
       const plateUpgradeDetail = get("#shopPlateUpgradeDetail");
       const plateMaxed = plateUpgradeStatus.reason === "max_capacity";
@@ -567,7 +614,10 @@ export function createUI(root) {
       get("#shopContinue").onclick = onContinue;
       nodes.shop.classList.add("show");
     },
-    closeShop() { nodes.shop.classList.remove("show"); },
+    closeShop() {
+      closeDeleteConfirmation();
+      nodes.shop.classList.remove("show");
+    },
     setShopMessage(message, tone = "normal") {
       const node = get("#shopMessage");
       setText(node, message);

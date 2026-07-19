@@ -14,7 +14,7 @@
     <link rel="preload" href="./assets/cards/c001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
     <link rel="preload" href="./assets/cards/a001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
     <link rel="preload" href="./assets/cards/u001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="stylesheet" href="./styles.css?v=10" />
+    <link rel="stylesheet" href="./styles.css?v=12" />
   </head>
   <body>
     <main class="app" id="app">
@@ -78,7 +78,17 @@
             <div class="welcome-logo" aria-hidden="true"><span>CE</span></div>
             <div class="eyebrow">EAT SMART · DISCARD FAST</div>
             <h1 id="welcomeTitle">吃牌肉鸽</h1>
-            <p>先学会吃与弃，再构筑会爆炸的连锁。<br />每轮永久叠加一条规则，在 15 轮内突破目标。</p>
+            <p>逐张判断吃或弃，再用永久规则与商店构筑把分数滚起来。</p>
+            <div class="welcome-objective">
+              <span>明确目标</span>
+              <strong>第 5 / 10 / 15 轮累计达到 100 / 500 / 1800 分</strong>
+              <small>在目标轮结算时未达标，本局立即结束。</small>
+            </div>
+            <div class="welcome-loop" aria-label="每轮流程">
+              <span><b>① 选规则</b><small>永久保留；达成条件才生效</small></span>
+              <span><b>② 吃与弃</b><small>吃通常赚钱，弃通常得分更稳</small></span>
+              <span><b>③ 逛商店</b><small>在买牌、扩容、删牌间取舍</small></span>
+            </div>
             <div class="welcome-legend">
               <span class="legend-edible">↓ 可食用 · 通常吃牌得分</span>
               <span class="legend-inedible">↑ 不可食用 · 通常弃牌得分</span>
@@ -97,8 +107,14 @@
           <section class="modal-panel draft-panel">
             <div class="eyebrow">ROUND <span id="draftRoundValue">01</span> · RULE PICK</div>
             <h1 id="ruleDraftTitle">选择一条规则</h1>
-            <p class="modal-lead">选择一条永久加入本局且不会重复的规则；规则会持续叠加，构筑越打越爽。</p>
-            <div class="target-banner"><span>下一阶段目标</span><strong id="draftTargetText">第 5 轮 · 100 分</strong></div>
+            <p class="modal-lead">每轮选 1 条并永久保留；结算时达成条件才获得加成，未达成不会扣分。</p>
+            <div class="rule-help"><b>规则怎么用</b><span>右侧是奖励倍率或固定加分。先选当前牌组容易稳定达成的条件，再围绕它买牌。</span></div>
+            <div class="target-banner">
+              <span>明确目标</span>
+              <strong id="draftTargetText">第 5 轮结算前累计达到 100 分</strong>
+              <small id="draftTargetProgress">当前 0 · 还差 100 · 剩余 5 轮</small>
+              <i aria-hidden="true"><b id="draftTargetFill"></b></i>
+            </div>
             <div class="option-grid" id="ruleDraftList"></div>
           </section>
         </div>
@@ -183,8 +199,21 @@
             <button class="primary-button" id="shopContinue" type="button">结束商店 · 下一轮</button>
           </section>
         </div>
+
+        <div class="overlay delete-confirm-overlay" id="deleteConfirm" role="alertdialog" aria-modal="true" aria-labelledby="deleteConfirmTitle">
+          <section class="modal-panel delete-confirm-panel">
+            <div class="eyebrow">IRREVERSIBLE ACTION · 不可撤销</div>
+            <h1 id="deleteConfirmTitle">确认删除这张牌？</h1>
+            <div class="delete-confirm-card" id="deleteConfirmCard"></div>
+            <p id="deleteConfirmWarning">删除后不会返还金币，这张实体牌本局不再出现。</p>
+            <div class="delete-confirm-actions">
+              <button class="shop-reroll-button" id="deleteConfirmCancel" type="button">取消 · 保留此牌</button>
+              <button class="primary-button danger-action" id="deleteConfirmAccept" type="button">确认删除</button>
+            </div>
+          </section>
+        </div>
       </section>
     </main>
-    <script type="module" src="./js/main.js?v=10"></script>
+    <script type="module" src="./js/main.js?v=12"></script>
   </body>
 </html>

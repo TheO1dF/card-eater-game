@@ -1096,7 +1096,7 @@ export function createRoundEngine() {
   }
 
   function getGoldReward(state) {
-    return state.round.eat_sequence.length;
+    return new Set(state.round.eat_sequence.map((entry) => entry.card_uuid)).size;
   }
 
   return {

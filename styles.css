@@ -422,7 +422,9 @@ button { -webkit-tap-highlight-color: transparent; }
 
 .welcome-overlay { inset: 0; z-index: 100; background: #100c17; }
 .welcome-panel {
-  width: min(520px, 100%);
+  width: min(680px, 100%);
+  max-height: 96dvh;
+  overflow: hidden auto;
   padding: clamp(24px, 6vw, 42px);
   border: 2px solid #8f78a5;
   background: #211a2d;
@@ -433,6 +435,14 @@ button { -webkit-tap-highlight-color: transparent; }
 .welcome-logo span { font-size: 24px; font-weight: 900; }
 .welcome-panel h1 { margin: 9px 0; font-size: clamp(31px, 8vw, 50px); letter-spacing: .1em; }
 .welcome-panel > p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.8; }
+.welcome-objective { display: grid; gap: 5px; margin: 16px 0 10px; padding: 11px 13px; border: 2px solid var(--gold); background: #17121f; text-align: left; }
+.welcome-objective span { color: var(--gold); font-size: 8px; font-weight: 900; letter-spacing: .16em; }
+.welcome-objective strong { color: var(--paper); font-size: 13px; line-height: 1.45; }
+.welcome-objective small { color: var(--danger); font-size: 8px; line-height: 1.5; }
+.welcome-loop { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.welcome-loop span { display: grid; gap: 4px; padding: 8px; border: 1px solid #5b4b68; background: #1a1522; text-align: left; }
+.welcome-loop b { color: var(--paper); font-size: 9px; }
+.welcome-loop small { color: var(--muted); font-size: 7px; line-height: 1.45; }
 .welcome-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 22px 0 12px; }
 .welcome-legend span { padding: 9px 6px; border: 1px solid; font-size: 8px; }
 .legend-edible { border-color: var(--eat-dark) !important; color: var(--eat); background: rgba(36,95,72,.18); }
@@ -458,9 +468,15 @@ button { -webkit-tap-highlight-color: transparent; }
 .eyebrow { color: var(--gold); font-size: 9px; font-weight: 900; letter-spacing: .2em; }
 .modal-panel h1 { margin: 7px 0 8px; color: var(--paper); font-size: clamp(23px, 4vw, 34px); letter-spacing: .06em; }
 .modal-lead { margin: 0 0 18px; color: var(--muted); font-size: 11px; line-height: 1.6; }
-.target-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; padding: 10px 12px; border: 1px solid #6c587e; background: #17121f; font-size: 10px; }
-.target-banner span { color: var(--muted); }
-.target-banner strong { color: var(--gold); }
+.rule-help { display: grid; grid-template-columns: auto 1fr; gap: 9px; margin: -7px 0 11px; padding: 9px 11px; border-left: 3px solid #8f78a5; background: #191520; font-size: 8px; line-height: 1.5; }
+.rule-help b { color: var(--rare); }
+.rule-help span { color: #b8aabd; }
+.target-banner { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; margin-bottom: 18px; padding: 11px 13px; border: 2px solid var(--gold); background: #17121f; font-size: 10px; }
+.target-banner span { color: var(--gold); font-size: 8px; font-weight: 900; letter-spacing: .12em; }
+.target-banner strong { color: var(--paper); text-align: right; }
+.target-banner small { grid-column: 1 / -1; color: var(--muted); font-size: 8px; }
+.target-banner > i { grid-column: 1 / -1; height: 5px; overflow: hidden; border: 1px solid #564762; background: #0b0911; }
+.target-banner > i > b { display: block; width: 0; height: 100%; background: var(--gold); transition: width 180ms steps(8, end); }
 
 .option-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .rule-card {
@@ -485,6 +501,19 @@ button { -webkit-tap-highlight-color: transparent; }
 .rule-copy strong { margin-top: 7px; font-size: 17px; }
 .rule-copy em { margin-top: 10px; color: #c8bad2; font-size: 10px; font-style: normal; line-height: 1.6; }
 .rule-multiplier { justify-self: end; color: var(--gold); font-size: 23px; font-weight: 900; }
+.rule-tier { color: #ad9ab7 !important; letter-spacing: .08em !important; }
+
+.delete-confirm-overlay { z-index: 95; background: rgba(8,5,10,.985); }
+.delete-confirm-panel { width: min(560px, 100%); border-color: var(--danger); }
+.delete-confirm-card { display: grid; grid-template-columns: 74px 1fr; gap: 13px; align-items: center; padding: 13px; border: 1px solid #704052; background: #17121f; }
+.delete-confirm-card .game-sprite { width: 70px; height: 70px; }
+.delete-confirm-copy { display: grid; gap: 5px; min-width: 0; }
+.delete-confirm-copy strong { color: var(--paper); font-size: 17px; }
+.delete-confirm-copy small { color: var(--muted); font-size: 8px; }
+.delete-confirm-copy em { color: #cbb9cc; font-size: 8px; font-style: normal; line-height: 1.5; }
+.delete-confirm-panel > p { margin: 12px 0; color: var(--danger); font-size: 9px; line-height: 1.6; }
+.delete-confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.delete-confirm-actions button { min-height: 43px; }
 
 .quest-overlay { background: rgba(14,7,16,.985); }
 .quest-panel { border-color: #a85a74; box-shadow: 0 0 0 4px #0c0911, 10px 10px 0 rgba(0,0,0,.5), inset 0 0 0 2px #5a2f43; }
@@ -713,6 +742,13 @@ button { -webkit-tap-highlight-color: transparent; }
   .action-button kbd { width: 22px; height: 22px; }
   .overlay { inset: calc(52px + env(safe-area-inset-top)) 0 0; padding: 9px 9px max(9px, env(safe-area-inset-bottom)); }
   .welcome-overlay, .countdown-overlay { inset: 0; padding: max(11px, env(safe-area-inset-top)) 11px max(11px, env(safe-area-inset-bottom)); }
+  .welcome-panel { padding: 18px 14px; }
+  .welcome-logo { width: 56px; height: 56px; margin-bottom: 10px; }
+  .welcome-loop { grid-template-columns: 1fr; }
+  .welcome-legend { margin-top: 10px; }
+  .rule-help { grid-template-columns: 1fr; gap: 4px; }
+  .target-banner { grid-template-columns: 1fr; }
+  .target-banner strong { text-align: left; }
   .option-grid { grid-template-columns: 1fr; }
   .rule-card { min-height: 108px; grid-template-columns: 36px 1fr auto; grid-template-rows: 1fr; align-items: center; gap: 10px; padding: 12px; }
   .rule-copy strong { margin-top: 4px; font-size: 14px; }
@@ -740,6 +776,9 @@ button { -webkit-tap-highlight-color: transparent; }
   .deck-status-summary { align-items: flex-start; flex-direction: column; }
   .deck-status-summary span { text-align: left; }
   .shop-plate-summary { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .delete-confirm-card { grid-template-columns: 58px 1fr; }
+  .delete-confirm-card .game-sprite { width: 54px; height: 54px; }
+  .delete-confirm-actions { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 380px) {

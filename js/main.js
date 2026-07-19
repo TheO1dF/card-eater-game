@@ -61,9 +61,10 @@ function completeRound() {
 
   const result = engine.finalizeRound(state);
   result.gold_reward = engine.getGoldReward(state);
-  result.gold_eaten = state.round.eat_sequence.length;
+  result.eat_actions = state.round.eat_sequence.length;
+  result.gold_eaten = new Set(state.round.eat_sequence.map((entry) => entry.card_uuid)).size;
   state.gold = safeAdd(state.gold, result.gold_reward);
-  result.breakdown.splice(-1, 0, { label: "基础金币（每次吃牌 +1）", text: `+${result.gold_reward}`, kind: "bonus" });
+  result.breakdown.splice(-1, 0, { label: "基础金币（每张实体牌每轮首次吃 +1）", text: `+${result.gold_reward}`, kind: "bonus" });
   result.quest_result = finalizeQuest(state, result);
   result.round_end_item_results = applyRoundEndItems(state, { random: browserPlatform.random });
   result.round_end_item_results.forEach((message) => {

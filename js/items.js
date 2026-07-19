@@ -72,7 +72,7 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "alternating_action_bonus", bonus: 2 },
   }, 3),
   item({
-    id: "IT101", name: "魔法帽", rarity: "普通道具", role: "生成", shop_price: 4, min_shop_round: 1,
+    id: "IT101", name: "魔法帽", rarity: "普通道具", role: "生成", shop_price: 8, min_shop_round: 4,
     description: "轮次结束时，将牌组中随机 1 张非兔子牌变为兔子。",
     effect: { kind: "round_end_transform", target_card_id: "A004" },
   }, 8),
@@ -82,7 +82,7 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "first_correct_action_bonus", bonus: 2 },
   }, 9),
   item({
-    id: "IT103", name: "硬币别针", rarity: "普通道具", role: "经济", shop_price: 6,
+    id: "IT103", name: "硬币别针", rarity: "普通道具", role: "经济", shop_price: 7, min_shop_round: 2,
     description: "每轮首次弃牌时，结算金币 +1。",
     effect: { kind: "first_discard_gold", gold: 1 },
   }, 10),
@@ -92,12 +92,12 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "repeat_type_action_bonus", bonus: 1 },
   }, 11),
   item({
-    id: "IT105", name: "扩容腰包", rarity: "普通道具", role: "大牌组", shop_price: 6, min_shop_round: 3,
+    id: "IT105", name: "扩容腰包", rarity: "普通道具", role: "大牌组", shop_price: 7, min_shop_round: 4,
     description: "牌组达到 14 张时，本轮最终得分 ×1.08。",
     effect: { kind: "deck_size_multiplier", minimum: 14, multiplier: 1.08 },
   }, 12),
   item({
-    id: "IT106", name: "餐盘量尺", rarity: "普通道具", role: "餐盘", shop_price: 4, min_shop_round: 1,
+    id: "IT106", name: "餐盘量尺", rarity: "普通道具", role: "餐盘", shop_price: 6, min_shop_round: 3,
     description: "餐盘扩容费用永久 -1，最低仍为 1 金币。",
     effect: { kind: "plate_upgrade_discount", amount: 1 },
   }, 13),
@@ -107,17 +107,17 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "keyword_card_bonus", keyword: "相邻", bonus: 1 },
   }, 14),
   item({
-    id: "IT108", name: "拆信刀", rarity: "普通道具", role: "摧毁", shop_price: 8, min_shop_round: 3,
+    id: "IT108", name: "拆信刀", rarity: "普通道具", role: "摧毁", shop_price: 8, min_shop_round: 4,
     description: "打出带【摧毁】关键字的牌时，额外 +2 分。",
     effect: { kind: "keyword_card_bonus", keyword: "摧毁", bonus: 2 },
   }, 15),
   item({
-    id: "IT109", name: "育苗盘", rarity: "普通道具", role: "生成", shop_price: 5, min_shop_round: 1,
+    id: "IT109", name: "育苗盘", rarity: "普通道具", role: "生成", shop_price: 5, min_shop_round: 2,
     description: "由【生成】加入牌组的卡牌额外 +1 分。",
     effect: { kind: "generated_card_bonus", bonus: 1 },
   }, 4),
   item({
-    id: "IT110", name: "年轮尺", rarity: "普通道具", role: "成长", shop_price: 5, min_shop_round: 1,
+    id: "IT110", name: "年轮尺", rarity: "普通道具", role: "成长", shop_price: 5, min_shop_round: 2,
     description: "打出带【成长】关键字的牌时，额外 +1 分。",
     effect: { kind: "keyword_card_bonus", keyword: "成长", bonus: 1 },
   }, 5),
@@ -132,25 +132,65 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "negative_action_gold", gold: 1, once_per_round: true },
   }, 7),
   item({
-    id: "IT113", name: "夜市会员卡", rarity: "普通道具", role: "商店", shop_price: 6, min_shop_round: 2,
+    id: "IT113", name: "夜市会员卡", rarity: "普通道具", role: "商店", shop_price: 10, min_shop_round: 5,
     description: "商店卡牌价格额外 -1，最低仍为 1 金币。",
     effect: { kind: "shop_price_discount", amount: 1 },
   }, 8),
   item({
-    id: "IT114", name: "折叠镜", rarity: "普通道具", role: "位置", shop_price: 6, min_shop_round: 2,
+    id: "IT114", name: "折叠镜", rarity: "普通道具", role: "位置", shop_price: 6, min_shop_round: 3,
     description: "既非首位也非末位的行动牌额外 +2 分。",
     effect: { kind: "middle_action_bonus", bonus: 2 },
   }, 9),
   item({
-    id: "IT115", name: "回卷发条", rarity: "普通道具", role: "重洗", shop_price: 5, min_shop_round: 1,
+    id: "IT115", name: "回卷发条", rarity: "普通道具", role: "重洗", shop_price: 9, min_shop_round: 4,
     description: "牌组不超过 10 张时，每轮获得 1 次重洗；可与其他重洗次数叠加。",
     effect: { kind: "round_reshuffle_charge", charges: 1, max_deck_size: 10 },
   }, 10),
   item({
-    id: "IT116", name: "零钱餐巾", rarity: "普通道具", role: "经济", shop_price: 4, min_shop_round: 1,
+    id: "IT116", name: "零钱餐巾", rarity: "普通道具", role: "经济", shop_price: 7, min_shop_round: 3,
     description: "每轮每弃 2 张牌获得 1 金币，最多触发 3 次。",
     effect: { kind: "discard_gold_every", count: 2, gold: 1, max_triggers: 3 },
   }, 11),
+  item({
+    id: "IT117", name: "缺口餐叉", rarity: "普通道具", role: "吃牌", shop_price: 2, min_shop_round: 1,
+    description: "每轮第一次吃牌额外 +1 分。",
+    effect: { kind: "first_action_kind_bonus", action: "eat", bonus: 1 },
+  }, 12),
+  item({
+    id: "IT118", name: "牛皮纸袋", rarity: "普通道具", role: "弃牌", shop_price: 2, min_shop_round: 1,
+    description: "每轮第一次弃牌额外 +1 分。",
+    effect: { kind: "first_action_kind_bonus", action: "discard", bonus: 1 },
+  }, 13),
+  item({
+    id: "IT119", name: "三格调味盒", rarity: "普通道具", role: "节奏", shop_price: 3, min_shop_round: 1,
+    description: "每轮第 3 张行动牌额外 +2 分。",
+    effect: { kind: "exact_action_number_bonus", action_number: 3, bonus: 2 },
+  }, 14),
+  item({
+    id: "IT120", name: "盘沿夹", rarity: "普通道具", role: "位置", shop_price: 4, min_shop_round: 1,
+    description: "每轮第一张与最后一张行动牌各额外 +1 分。",
+    effect: { kind: "plate_edge_bonus", bonus: 1 },
+  }, 15),
+  item({
+    id: "IT121", name: "保温软垫", rarity: "普通道具", role: "餐盘", shop_price: 4, min_shop_round: 1,
+    description: "有牌未登上餐盘时，每轮第一张行动牌额外 +2 分。",
+    effect: { kind: "reserve_first_action_bonus", bonus: 2 },
+  }, 0),
+  item({
+    id: "IT122", name: "分类标签", rarity: "普通道具", role: "分类", shop_price: 4, min_shop_round: 1,
+    description: "每连续正确处理 3 张牌，第 3 张额外 +2 分；处理错误会中断计数。",
+    effect: { kind: "correct_streak_bonus", count: 3, bonus: 2 },
+  }, 1),
+  item({
+    id: "IT123", name: "尾单夹", rarity: "普通道具", role: "位置", shop_price: 4, min_shop_round: 1,
+    description: "每轮最后一张牌按正确食性处理时，额外 +2 分。",
+    effect: { kind: "last_correct_action_bonus", bonus: 2 },
+  }, 2),
+  item({
+    id: "IT124", name: "换色弹簧", rarity: "普通道具", role: "相邻", shop_price: 4, min_shop_round: 1,
+    description: "与上一张做相同行动但类别不同时，额外 +1 分。",
+    effect: { kind: "different_type_same_action_bonus", bonus: 1 },
+  }, 3),
 ]);
 
 const ITEM_BY_ID = Object.freeze(Object.fromEntries(ITEM_LIBRARY.map((entry) => [entry.id, entry])));
@@ -190,6 +230,10 @@ export function applyRoundItemSetup(state) {
 export function resolveItemActionEffects(state, action, card) {
   let flatBonus = 0;
   const messages = [];
+  const isCorrectAction = (targetAction, targetCard) => (
+    (targetCard.edibility === "edible" && targetAction === "eat")
+    || (targetCard.edibility === "inedible" && targetAction === "discard")
+  );
   for (const entry of state.items) {
     const effect = entry.effect;
     if (effect.kind === "last_discard_bonus" && action === "discard" && state.round.draw_pile.length === 1) {
@@ -214,9 +258,7 @@ export function resolveItemActionEffects(state, action, card) {
       }
     }
     if (effect.kind === "first_correct_action_bonus" && state.round.actions.length === 0) {
-      const correct = (card.edibility === "edible" && action === "eat")
-        || (card.edibility === "inedible" && action === "discard");
-      if (correct) {
+      if (isCorrectAction(action, card)) {
         flatBonus = safeAdd(flatBonus, effect.bonus);
         messages.push(`${entry.name} +${effect.bonus}`);
       }
@@ -271,6 +313,47 @@ export function resolveItemActionEffects(state, action, card) {
     if (effect.kind === "middle_action_bonus" && state.round.actions.length > 0 && state.round.draw_pile.length > 1) {
       flatBonus = safeAdd(flatBonus, effect.bonus);
       messages.push(`${entry.name} +${effect.bonus}`);
+    }
+    if (effect.kind === "first_action_kind_bonus" && action === effect.action) {
+      const matchingActions = effect.action === "eat" ? state.round.eat_sequence : state.round.discard_sequence;
+      if (matchingActions.length === 0) {
+        flatBonus = safeAdd(flatBonus, effect.bonus);
+        messages.push(`${entry.name} +${effect.bonus}`);
+      }
+    }
+    if (effect.kind === "exact_action_number_bonus" && state.round.actions.length + 1 === effect.action_number) {
+      flatBonus = safeAdd(flatBonus, effect.bonus);
+      messages.push(`${entry.name} +${effect.bonus}`);
+    }
+    if (effect.kind === "plate_edge_bonus" && (state.round.actions.length === 0 || state.round.draw_pile.length === 1)) {
+      flatBonus = safeAdd(flatBonus, effect.bonus);
+      messages.push(`${entry.name} +${effect.bonus}`);
+    }
+    if (effect.kind === "reserve_first_action_bonus" && state.round.reserve_count > 0 && state.round.actions.length === 0) {
+      flatBonus = safeAdd(flatBonus, effect.bonus);
+      messages.push(`${entry.name} +${effect.bonus}`);
+    }
+    if (effect.kind === "correct_streak_bonus") {
+      const key = `item:${entry.id}:streak`;
+      const streak = isCorrectAction(action, card)
+        ? (state.round.effect_trigger_counts[key] ?? 0) + 1
+        : 0;
+      state.round.effect_trigger_counts[key] = streak;
+      if (streak > 0 && streak % effect.count === 0) {
+        flatBonus = safeAdd(flatBonus, effect.bonus);
+        messages.push(`${entry.name} +${effect.bonus}`);
+      }
+    }
+    if (effect.kind === "last_correct_action_bonus" && state.round.draw_pile.length === 1 && isCorrectAction(action, card)) {
+      flatBonus = safeAdd(flatBonus, effect.bonus);
+      messages.push(`${entry.name} +${effect.bonus}`);
+    }
+    if (effect.kind === "different_type_same_action_bonus") {
+      const previous = state.round.actions.at(-1);
+      if (previous?.action === action && previous.type !== card.type) {
+        flatBonus = safeAdd(flatBonus, effect.bonus);
+        messages.push(`${entry.name} +${effect.bonus}`);
+      }
     }
   }
   return { flat_bonus: flatBonus, messages };
