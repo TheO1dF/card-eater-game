@@ -4,12 +4,13 @@ import { createGestureController } from "./gesture.js";
 import { createRoundEngine } from "./engine.js";
 import { createShopService } from "./shop.js";
 import { randomDraftRules } from "./rules.js";
-import { applyRoundItemSetup } from "./items.js";
-import { applyQuestRoundPenalty, finalizeQuest, randomDraftQuests, selectQuest } from "./quests.js";
+import { applyRoundEndItems, applyRoundItemSetup } from "./items.js";
+import { activatePendingQuestRewards, applyQuestRoundPenalty, finalizeQuest, randomDraftQuests, selectQuest } from "./quests.js";
 import { createUI } from "./ui.js";
 import { browserPlatform } from "./platform.js";
 import { initAudio, playSound, toggleBGM } from "./audio.js";
 import { safeAdd } from "./numbers.js";
+import { takeRoundDrawPile } from "./deck-pressure.js";
 
 const state = createInitialPlayerState({ create_id: browserPlatform.create_id });
 const engine = createRoundEngine();
@@ -17,6 +18,7 @@ const shopService = createShopService({ random: browserPlatform.random, create_i
 const ui = createUI(document);
 
 let shopBuffer = null;
+let shopItemBuffer = null;
 let actionLocked = true;
 let streak = { action: null, count: 0 };
 let soundEnabled = true;
@@ -57,10 +59,20 @@ function completeRound() {
   state.round.elapsed_ms = Math.max(1, browserPlatform.now() - state.round.started_at_ms);
 
   const result = engine.finalizeRound(state);
-  const baseGold = engine.getGoldReward(state);
-  result.gold_reward = baseGold;
-  state.gold = safeAdd(state.gold, baseGold);
+  const goldEconomy = engine.getGoldEconomy(state);
+  result.gold_economy = goldEconomy;
+  result.gold_reward = goldEconomy.net;
+  result.gold_eaten = state.round.eat_sequence.length;
+  state.gold = safeAdd(state.gold, goldEconomy.net);
+  result.breakdown.splice(-1, 0,
+    { label: `基础金币（前 ${goldEconomy.cap} 次吃牌）`, text: `+${goldEconomy.gross}`, kind: "bonus" },
+    { label: "牌组携带费", text: goldEconomy.upkeep > 0 ? `-${goldEconomy.upkeep}` : "0", kind: goldEconomy.upkeep > 0 ? "penalty" : "detail" },
+  );
   result.quest_result = finalizeQuest(state, result);
+  result.round_end_item_results = applyRoundEndItems(state, { random: browserPlatform.random });
+  result.round_end_item_results.forEach((message) => {
+    result.breakdown.splice(-1, 0, { label: "道具 · 轮末变化", text: message, kind: "rule" });
+  });
   refreshTable();
 
   const milestone = engine.levelProgressCheck(state);
@@ -82,6 +94,7 @@ function completeRound() {
 
   if (!outcome && shopBuffer === null) {
     shopBuffer = shopService.getShopCards(state);
+    shopItemBuffer = shopService.getShopItems(state);
     // Warm the shop art while the summary is visible, but never make game
     // progression depend on image decoding. Safari may leave decode() pending
     // for a long time on a slow or interrupted connection.
@@ -166,10 +179,12 @@ const gesture = createGestureController({
 
 function prepareRound() {
   resetRoundState(state);
-  state.round.draw_pile = shuffle(state.deck.map((card) => ({ ...card, effect: card.effect ? { ...card.effect } : null })));
+  const shuffledDeck = shuffle(state.deck.map((card) => ({ ...card, effect: card.effect ? { ...card.effect } : null })));
+  Object.assign(state.round, takeRoundDrawPile(shuffledDeck));
   applyRoundItemSetup(state);
   applyQuestRoundPenalty(state, browserPlatform.random);
   shopBuffer = null;
+  shopItemBuffer = null;
   streak = { action: null, count: 0 };
   actionLocked = true;
   ui.renderTimer(0);
@@ -187,6 +202,8 @@ function enterRuleDraft() {
     transitionPhase(state, GAME_PHASES.RULE_DRAFT, { round: state.current_round });
   }
   if (state.active_quest?.round < state.current_round) state.active_quest = null;
+  const activatedRewards = activatePendingQuestRewards(state);
+  if (activatedRewards.length > 0) state.last_reward_activation = `任务奖励生效：${activatedRewards.join("、")}`;
   actionLocked = true;
   const canReshuffle = state.items.some((item) => item.effect?.kind === "round_reshuffle_charge")
     || state.deck.some((card) => card.effect?.kind === "gain_reshuffle_charge_destroy");
@@ -224,21 +241,51 @@ function enterQuestDraft() {
 function enterShop() {
   if (state.phase !== GAME_PHASES.SHOP) return;
   if (shopBuffer === null) shopBuffer = shopService.getShopCards(state);
+  else shopBuffer = shopService.repriceShopCards(state, shopBuffer);
+  if (shopItemBuffer === null) shopItemBuffer = shopService.getShopItems(state);
   ui.openShop(
     state,
     shopBuffer,
+    shopItemBuffer,
     (item) => {
       if (shopService.buyCard(state, item)) {
         shopBuffer = shopBuffer.filter((card) => card !== item);
         ui.setShopMessage(`购入「${item.name}」，已加入永久牌组。`, "success");
       } else {
-        ui.setShopMessage("金币不足，换个目标吧。", "error");
+        const status = shopService.getBuyCardStatus(state, item);
+        const message = {
+          insufficient_gold: `金币不足：需要 ${item.shop_price}，当前 ${state.gold}。`,
+          deck_full: `牌组已达 ${GAME_CONFIG.max_deck_size} 张上限，先回收一张牌。`,
+          copy_limit: `「${item.name}」已达到本局持有上限。`,
+          missing_card: "商品数据已失效，请刷新商店。",
+          invalid_offer: "商品价格异常，请刷新商店。",
+        }[status.reason] ?? "购买失败，请刷新后重试。";
+        ui.setShopMessage(message, "error");
+      }
+      enterShop();
+    },
+    (item) => {
+      if (shopService.buyItem(state, item)) {
+        shopItemBuffer = shopItemBuffer.filter((entry) => entry !== item);
+        ui.setShopMessage(`购入道具「${item.name}」，效果已装备。`, "success");
+      } else {
+        const status = shopService.getBuyItemStatus(state, item);
+        const message = status.reason === "insufficient_gold"
+          ? `金币不足：道具需要 ${item.shop_price}，当前 ${state.gold}。`
+          : status.reason === "already_owned"
+            ? `已经持有「${item.name}」。`
+            : "道具购买失败，请刷新后重试。";
+        ui.setShopMessage(message, "error");
       }
       enterShop();
     },
     (cardUuid) => {
       if (shopService.removeCard(state, cardUuid)) {
-        ui.setShopMessage(`精简成功，下次删牌费用为 ${state.remove_card_cost}。`, "success");
+        const transaction = state.last_shop_transaction;
+        ui.setShopMessage(
+          `回收「${transaction.card_name}」：支付 ${transaction.cost}，返还 ${transaction.salvage}；下次费用 ${state.remove_card_cost}。`,
+          "success",
+        );
       } else {
         const reason = state.deck.length <= 1 ? "牌组至少保留 1 张牌。" : "金币不足，无法删除这张牌。";
         ui.setShopMessage(reason, "error");
@@ -251,6 +298,7 @@ function enterShop() {
         ui.setShopMessage(`金币不足，刷新需要 ${reroll.cost} 金币。`, "error");
       } else {
         shopBuffer = reroll.cards;
+        shopItemBuffer = reroll.items;
         ui.setShopMessage(reroll.free ? "使用免费刷新机会。" : `支付 ${reroll.cost} 金币刷新商品。`, "success");
         void ui.preloadCardArt(shopBuffer);
       }
@@ -263,6 +311,7 @@ function enterShop() {
       state.current_round += 1;
       enterRuleDraft();
     },
+    (card) => shopService.getRemovalValue(state, card),
   );
 }
 

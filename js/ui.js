@@ -2,6 +2,9 @@ import { GAME_CONFIG, getNextMilestone } from "./config.js";
 import { getItemById } from "./items.js";
 import { formatScore } from "./numbers.js";
 import { getQuestRequirement, getQuestTarget } from "./quests.js";
+import { KEYWORD_LIBRARY } from "./keywords.js";
+import { getCardById } from "./data.js";
+import { getDeckPressureSummary } from "./deck-pressure.js";
 
 const PHASE_LABELS = Object.freeze({
   Init: "准备中", RuleDraft: "规则选择", QuestDraft: "任务选择", Playing: "出牌中", Scoring: "结算中",
@@ -11,8 +14,8 @@ const PHASE_LABELS = Object.freeze({
 const RARITY_CLASS = Object.freeze({ "普通": "common", "罕见": "uncommon", "稀有": "rare", "传奇": "legendary", "诅咒": "curse" });
 const EDIBILITY_LABEL = Object.freeze({ edible: "可食用", inedible: "不可食用" });
 const ROLE_LABEL = Object.freeze({ baseline: "基础", setup: "启动", payoff: "收割", sacrifice: "牺牲", engine: "成长引擎", economy: "经济" });
-const CARD_ART_VERSION = 6;
-const CARD_ATLAS_VERSION = 8;
+const CARD_ART_VERSION = 8;
+const CARD_ATLAS_VERSION = 10;
 const cardArtCache = new Map();
 const signed = (value) => value > 0 ? `+${formatScore(value)}` : formatScore(value);
 const cardArtUrl = (card) => card.runtime_art_mode === "atlas"
@@ -86,6 +89,19 @@ function itemElement(entry) {
   return node;
 }
 
+function shopItemElement(entry, onBuy) {
+  const button = document.createElement("button");
+  button.className = "shop-item-card";
+  button.type = "button";
+  button.innerHTML = `
+    <span class="shop-item-icon meta-sprite" style="${metaStyle(entry)}"></span>
+    <span><small>${entry.rarity} · ${entry.role}</small><strong>${entry.name}</strong><em>${entry.description}</em></span>
+    <b class="price-tag">$ ${entry.shop_price}</b>
+  `;
+  button.addEventListener("click", () => onBuy(entry));
+  return button;
+}
+
 function questElement(entry, state, onChoose) {
   const target = getQuestTarget(state.current_round, entry.condition.target_multiplier ?? 1);
   const displayQuest = { ...entry, target };
@@ -138,23 +154,48 @@ function shopCardElement(card, onBuy) {
   const button = document.createElement("button");
   button.className = `shop-card rarity-${RARITY_CLASS[card.rarity] ?? "common"}`;
   button.type = "button";
+  const priceNote = card.shop_discount > 0 || card.shop_size_surcharge > 0
+    ? `<small class="shop-price-note">基础 $${card.shop_base_price}${card.shop_discount > 0 ? ` · 优惠 -${card.shop_discount}` : ""}${card.shop_size_surcharge > 0 ? ` · 扩容 +${card.shop_size_surcharge}` : ""}</small>`
+    : "";
+  button.title = `基础价 ${card.shop_base_price ?? card.shop_price}；优惠 ${card.shop_discount ?? 0}；牌组扩容溢价 ${card.shop_size_surcharge ?? 0}`;
   button.innerHTML = `
     <span class="shop-card-icon game-sprite" style="${spriteStyle(card)}"></span>
-    <span class="shop-card-copy"><small>${card.rarity} · ${card.type} · ${ROLE_LABEL[card.role] ?? "特殊"}</small><strong>${card.name}</strong><em>吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</em><i>${card.effect?.description ?? "稳定基础价值"}</i></span>
+    <span class="shop-card-copy"><small>${card.rarity} · ${card.type} · ${ROLE_LABEL[card.role] ?? "特殊"}</small><strong>${card.name}</strong><em>吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</em><i>${card.effect?.description ?? "稳定基础价值"}</i>${priceNote}</span>
     <span class="price-tag">$ ${card.shop_price}</span>
   `;
   button.addEventListener("click", () => onBuy(card));
   return button;
 }
 
-function deckChipElement(card, cost, onRemove) {
+function deckChipElement(card, cost, salvage, onRemove) {
   const button = document.createElement("button");
   button.className = "deck-chip";
   button.type = "button";
-  button.title = `${card.name}：点击支付 ${cost} 金币删除`;
-  button.innerHTML = `<span class="game-sprite" style="${spriteStyle(card)}"></span><b>${card.name}</b><small>${EDIBILITY_LABEL[card.edibility]} · 吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</small><i>删除 $${cost}</i>`;
+  button.title = `${card.name}：支付 ${cost} 金币回收，返还 ${salvage} 金币`;
+  button.innerHTML = `<span class="game-sprite" style="${spriteStyle(card)}"></span><b>${card.name}</b><small>${EDIBILITY_LABEL[card.edibility]} · 吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</small><i>回收 $${cost} · 返还 +${salvage}</i>`;
   button.addEventListener("click", () => onRemove(card.uuid));
   return button;
+}
+
+function deckStatusCardElement(card, quantity) {
+  const article = document.createElement("article");
+  article.className = `deck-status-card rarity-${RARITY_CLASS[card.rarity] ?? "common"}`;
+  const progress = card.growth_uses ? `<small>成长进度：${card.growth_uses}/${card.effect?.every ?? "?"}</small>` : "";
+  const stored = card.stored_score ? `<small>当前储存：${card.stored_score} 分</small>` : "";
+  const generated = card.generated_from
+    ? `<small>生成来源：${getCardById(card.generated_from)?.name ?? card.generated_from}</small>`
+    : "";
+  article.innerHTML = `
+    <span class="deck-status-art game-sprite" style="${spriteStyle(card)}"></span>
+    <span class="deck-status-copy">
+      <span class="deck-status-head"><strong>${card.name}</strong><b>×${quantity}</b></span>
+      <small>${card.id} · ${card.rarity} · ${card.type} · ${EDIBILITY_LABEL[card.edibility]}</small>
+      <em>吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</em>
+      ${generated}${stored}${progress}
+      <i>${card.effect?.description ?? "无类别、无效果。"}</i>
+    </span>
+  `;
+  return article;
 }
 
 export function createUI(root) {
@@ -165,8 +206,71 @@ export function createUI(root) {
     eatZone: get("#eatZone"), discardZone: get("#discardZone"), swipeStatus: get("#swipeStatus"),
     draft: get("#ruleDraft"), draftList: get("#ruleDraftList"), summary: get("#roundSummary"),
     quest: get("#questDraft"), questList: get("#questDraftList"),
-    shop: get("#shopPanel"), shopOffers: get("#shopOfferList"), shopDeck: get("#shopDeckList"), welcome: get("#welcomeOverlay"),
+    shop: get("#shopPanel"), shopOffers: get("#shopOfferList"), shopItems: get("#shopItemOfferList"), shopDeck: get("#shopDeckList"), welcome: get("#welcomeOverlay"),
+    questStatus: get("#questStatus"), questInfoButton: get("#questInfoButton"),
+    deckStatus: get("#deckStatus"), deckInfoButton: get("#deckInfoButton"),
   };
+
+  function openDeckStatus(state) {
+    const grouped = new Map();
+    for (const card of state.deck) {
+      const key = [card.id, card.eat_points, card.discard_points, card.generated_from ?? "", card.stored_score ?? 0, card.growth_uses ?? 0].join("|");
+      const group = grouped.get(key) ?? { card, quantity: 0 };
+      group.quantity += 1;
+      grouped.set(key, group);
+    }
+    const groups = [...grouped.values()].sort((left, right) => (
+      left.card.type.localeCompare(right.card.type, "zh-CN") || left.card.name.localeCompare(right.card.name, "zh-CN")
+    ));
+    const typeCounts = state.deck.reduce((counts, card) => {
+      counts[card.type] = (counts[card.type] ?? 0) + 1;
+      return counts;
+    }, {});
+    get("#deckStatusSummary").innerHTML = `
+      <b>${state.deck.length} / ${GAME_CONFIG.max_deck_size} 张</b>
+      <span>${Object.entries(typeCounts).sort(([, a], [, b]) => b - a).map(([type, count]) => `${type} ${count}`).join(" · ")}</span>
+    `;
+    const liveRound = state.phase === "Playing" || state.phase === "Scoring";
+    const pressureDeckSize = liveRound && state.round.deck_size_at_start ? state.round.deck_size_at_start : state.deck.length;
+    const pressure = getDeckPressureSummary(pressureDeckSize);
+    const actionBudget = liveRound && state.round.action_budget ? state.round.action_budget : pressure.action_budget;
+    const reserveCount = liveRound && state.round.action_budget ? state.round.reserve_count : pressure.reserve_count;
+    get("#deckPressureSummary").innerHTML = `
+      <div><small>${liveRound ? "本轮登场" : "下轮预计"}</small><b>${actionBudget} / ${pressureDeckSize}</b><span>${reserveCount > 0 ? `${reserveCount} 张不登场` : "全牌组登场"}</span></div>
+      <div><small>构筑密度</small><b>×${pressure.precision_multiplier}</b><span>${pressure.precision_multiplier > 1 ? "精简牌组得分奖励" : "无额外倍率"}</span></div>
+      <div><small>基础金币</small><b>最多 +${pressure.gold_cap}</b><span>携带费 -${pressure.upkeep}</span></div>
+      <div><small>商店压力</small><b>卡价 +${pressure.shop_surcharge}</b><span>超载回收 +${pressure.salvage_bonus}</span></div>
+    `;
+    get("#deckStatusList").replaceChildren(...groups.map(({ card, quantity }) => deckStatusCardElement(card, quantity)));
+    get("#keywordGlossaryList").innerHTML = Object.entries(KEYWORD_LIBRARY)
+      .map(([keyword, description]) => `<div><b>【${keyword}】</b><span>${description}</span></div>`)
+      .join("");
+    nodes.questStatus?.classList.remove("show");
+    nodes.deckStatus?.classList.add("show");
+  }
+
+  function openQuestStatus(state) {
+    const entry = state.active_quest;
+    const content = get("#questStatusContent");
+    const title = get("#questStatusTitle");
+    if (entry) {
+      const reward = entry.reward.kind === "item" ? getItemById(entry.reward.item_id) : null;
+      setText(title, entry.name);
+      content.innerHTML = `
+        <div class="quest-status-state ${entry.finalized ? (entry.completed ? "success" : "failed") : "active"}">${entry.finalized ? (entry.completed ? "任务完成" : "任务失败") : `第 ${entry.round} 轮进行中`}</div>
+        <div class="quest-block quest-penalty"><b>当前惩罚</b><span>${entry.penalty.description}</span></div>
+        <div class="quest-block quest-requirement"><b>完成要求</b><span>${getQuestRequirement(entry)}</span></div>
+        <div class="quest-status-reward"><b>完成奖励</b><span>${reward ? `${reward.name}：${reward.description}` : entry.reward.name}</span><small>完成后在下一轮开始时生效</small></div>
+      `;
+    } else {
+      setText(title, "任务记录");
+      content.innerHTML = state.quest_history.length === 0
+        ? '<p class="quest-status-empty">本轮没有危险任务。任务会在第 3 / 6 / 9 / 12 轮出现。</p>'
+        : `<ul class="quest-history-list">${state.quest_history.map((history) => `<li class="${history.completed ? "success" : "failed"}"><b>${history.completed ? "✓" : "×"} ${history.name}</b><span>第 ${history.round} 轮 · ${history.reward}</span></li>`).join("")}</ul>`;
+    }
+    nodes.deckStatus?.classList.remove("show");
+    nodes.questStatus?.classList.add("show");
+  }
 
   function renderItems(state) {
     const tray = get("#itemTray");
@@ -180,11 +284,35 @@ export function createUI(root) {
     setText(nodes.score, formatScore(state.total_score));
     nodes.score.title = String(state.total_score);
     setText(nodes.gold, formatScore(state.gold));
-    setText(nodes.remaining, state.round.draw_pile.length);
+    const liveRound = state.phase === "Playing" || state.phase === "Scoring";
+    const budget = liveRound && state.round.action_budget
+      ? state.round.action_budget
+      : getDeckPressureSummary(state.deck.length).action_budget;
+    setText(get("#remainingLabel"), liveRound ? "餐盘剩余" : "下轮登场");
+    setText(nodes.remaining, liveRound ? `${state.round.draw_pile.length}/${budget}` : `${budget}张`);
+    nodes.remaining.title = `${liveRound ? "本轮" : "下轮预计"}登场 ${budget} 张；永久牌组 ${state.deck.length} 张`;
     setText(nodes.phase, PHASE_LABELS[state.phase] ?? state.phase);
     setText(get("#shopGold"), formatScore(state.gold));
     setText(get("#shopDeleteCost"), state.remove_card_cost);
     setText(get("#reshuffleCount"), state.round.reshuffle_charges);
+    if (nodes.questInfoButton) {
+      nodes.questInfoButton.disabled = !state.active_quest && state.quest_history.length === 0;
+      nodes.questInfoButton.classList.toggle("has-active-quest", Boolean(state.active_quest && !state.active_quest.finalized));
+      nodes.questInfoButton.title = state.active_quest
+        ? `${state.active_quest.name}：${getQuestRequirement(state.active_quest)}；惩罚：${state.active_quest.penalty.description}`
+        : "查看任务记录";
+      nodes.questInfoButton.onclick = () => {
+        if (nodes.questStatus?.classList.contains("show")) nodes.questStatus.classList.remove("show");
+        else openQuestStatus(state);
+      };
+    }
+    if (nodes.deckInfoButton) {
+      nodes.deckInfoButton.title = `查看永久牌组（${state.deck.length} 张）`;
+      nodes.deckInfoButton.onclick = () => {
+        if (nodes.deckStatus?.classList.contains("show")) nodes.deckStatus.classList.remove("show");
+        else openDeckStatus(state);
+      };
+    }
     const reshuffleButton = get("#reshuffleButton");
     if (reshuffleButton) {
       const canReshuffle = state.phase === "Playing"
@@ -243,6 +371,8 @@ export function createUI(root) {
       get("#discardButton")?.addEventListener("click", onDiscard);
       get("#soundButton")?.addEventListener("click", onSound);
       get("#reshuffleButton")?.addEventListener("click", onReshuffle);
+      get("#questStatusClose")?.addEventListener("click", () => nodes.questStatus?.classList.remove("show"));
+      get("#deckStatusClose")?.addEventListener("click", () => nodes.deckStatus?.classList.remove("show"));
     },
     setSoundState(enabled) {
       const button = get("#soundButton");
@@ -339,8 +469,8 @@ export function createUI(root) {
         questResult.hidden = false;
         questResult.className = `quest-result ${result.quest_result.completed ? "success" : "failed"}`;
         questResult.textContent = result.quest_result.completed
-          ? `✓ 任务完成 · ${result.quest_result.reward}`
-          : `× 任务失败 · ${result.quest_result.requirement}`;
+          ? `✓ 任务完成 · 要求：${result.quest_result.requirement} · 已承受：${result.quest_result.penalty} · 奖励：${result.quest_result.reward}（第 ${result.quest_result.reward_effective_round} 轮生效）`
+          : `× 任务失败 · 未达成：${result.quest_result.requirement} · 已承受：${result.quest_result.penalty}`;
       } else {
         questResult.hidden = true;
         questResult.className = "quest-result";
@@ -361,7 +491,7 @@ export function createUI(root) {
       } else {
         eyebrow.textContent = `ROUND ${String(state.current_round).padStart(2, "0")} CLEAR`;
         title.textContent = "本轮结算";
-        tip.textContent = `用时 ${(state.round.elapsed_ms / 1000).toFixed(1)} 秒 · 吃了 ${result.gold_reward} 张牌 · 金币 +${result.gold_reward}`;
+        tip.textContent = `用时 ${(state.round.elapsed_ms / 1000).toFixed(1)} 秒 · 吃牌 ${result.gold_eaten} 次 · 基础金币 ${result.gold_economy.gross} - 携带费 ${result.gold_economy.upkeep} = +${result.gold_reward}`;
         button.textContent = "确认结算 · 进入商店";
         button.classList.remove("danger-action");
       }
@@ -382,11 +512,18 @@ export function createUI(root) {
       nodes.summary.classList.add("show");
     },
     hideRoundSummary() { nodes.summary.classList.remove("show"); },
-    openShop(state, cards, onBuy, onRemove, onReroll, onContinue) {
+    openShop(state, cards, itemOffers, onBuy, onBuyItem, onRemove, onReroll, onContinue, getRemovalValue) {
       renderHud(state);
+      const pressure = getDeckPressureSummary(state.deck.length);
+      get("#shopPressureSummary").innerHTML = `
+        <span><b>${state.deck.length} 张牌</b> · 下轮随机登场 ${pressure.action_budget} 张</span>
+        <span>卡牌扩容溢价 <b>+${pressure.shop_surcharge}</b> · 携带费 <b>-${pressure.upkeep}</b> · 超载回收 <b>+${pressure.salvage_bonus}</b></span>
+      `;
       nodes.shopOffers.replaceChildren(...cards.map((card) => shopCardElement(card, onBuy)));
       if (cards.length === 0) nodes.shopOffers.innerHTML = '<p class="empty-shop">商品售罄</p>';
-      nodes.shopDeck.replaceChildren(...state.deck.map((card) => deckChipElement(card, state.remove_card_cost, onRemove)));
+      nodes.shopItems.replaceChildren(...itemOffers.map((entry) => shopItemElement(entry, onBuyItem)));
+      if (itemOffers.length === 0) nodes.shopItems.innerHTML = '<p class="empty-shop">本局低级道具已售罄</p>';
+      nodes.shopDeck.replaceChildren(...state.deck.map((card) => deckChipElement(card, state.remove_card_cost, getRemovalValue(card), onRemove)));
       const rerollCost = state.round.shop_free_rerolls > 0
         ? 0
         : GAME_CONFIG.shop_reroll_base_cost + state.round.shop_reroll_count * GAME_CONFIG.shop_reroll_cost_step;

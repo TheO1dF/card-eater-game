@@ -6,8 +6,8 @@
 
 | H5 模块 | Godot 建议实现 | 职责 |
 | --- | --- | --- |
-| `config.js`, `balance.js` | `GameConfig.gd` / `.tres` | 轮数、门槛、价格、商店权重 |
-| `data.js`, `rules.js` | JSON / Godot Resource | 卡牌与永久规则内容库 |
+| `config.js`, `balance.js`, `deck-pressure.js` | `GameConfig.gd` / `.tres` | 轮数、门槛、价格、商店权重与牌组压力 |
+| `data.js`, `keywords.js`, `rules.js` | JSON / Godot Resource | 卡牌、统一关键字与永久规则内容库 |
 | `quests.js`, `items.js` | JSON / Godot Resource | 危险任务、永久道具与奖励 |
 | `numbers.js` | `SafeNumbers.gd` | 有限值、饱和运算、紧凑显示 |
 | `state.js` | `GameState.gd`（Resource） | 可存档状态与阶段流转 |
@@ -22,7 +22,7 @@
 
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 6,
   "phase": "Playing",
   "current_round": 6,
   "total_score": 220,
@@ -36,6 +36,9 @@
   "permanent_multipliers": [],
   "round": {
     "draw_pile": [],
+    "action_budget": 10,
+    "reserve_count": 0,
+    "deck_size_at_start": 10,
     "spent_pile": [],
     "actions": [],
     "eat_sequence": [],
@@ -48,9 +51,15 @@
     "shop_free_rerolls": 0,
     "reshuffle_charges": 0,
     "reshuffle_count": 0,
+    "destroyed_count": 0,
+    "generated_count": 0,
+    "grown_count": 0,
     "effect_trigger_counts": {},
     "consume_next_uuid": null,
     "quest_flat_modifier": 0,
+    "quest_action_modifiers": {},
+    "quest_first_action_modifier": 0,
+    "quest_last_action_modifier": 0,
     "elapsed_ms": 0
   }
 }
@@ -58,11 +67,13 @@
 
 `active_rules` 是本局永久规则集合，每轮只追加、不替换；`items`、`active_quest` 与两种 history 用于存档、回放和分析。卡牌稳定字段包括 `id/name/rarity/type/edibility/eat_points/discard_points/role/synergy_tags/effect`。每张卡保存 `art_file/runtime_atlas/runtime_x/runtime_y/sprite_sheet/sprite_x/sprite_y`；H5 使用“7 张开局独立小图 + 单张中后期紧凑图集”，任务和道具使用 4×4 `meta-atlas.webp`。Godot 可直接使用独立纹理，或按图集字段建立 `AtlasTexture`。
 
+`deck-pressure.js` 是 v0.9 新增的纯函数边界。每轮必须先洗完整牌组，再按 `getRoundDrawBudget` 截取餐盘并记录开局牌组张数；结算使用该快照计算构筑密度、基础金币上限和携带费，不能用轮中摧毁后的张数规避费用。商店按实时牌组张数重算扩张附加价，回收则在删除前计算超载奖励。Godot 侧应逐项复刻现有测试向量。
+
 运行时卡图不是直接按 AI 图集的固定格子裸切：`scripts/optimize-sprites.mjs` 会先移除跨格孤立像素，再根据 alpha 主体包围盒缩放到统一安全区并光学居中。Godot 侧若直接使用 `assets/cards/*.webp`，可获得与 H5 一致的图标尺寸和锚点；重新生成美术资源后应先运行该导出流程。
 
-`effect.kind` 使用数据驱动分派，当前类型包括：`buff_next_action`、`debuff_next_action`、`clear_debuff`、`permanent_growth_eat`、`gold_economy`、`shop_discount`、`scale_by_history`、`retro_multiplier_eaten_tag`、`bonus_if_previous`、`bonus_if_position`、`bonus_if_neighbors`、`consume_next_card`、`copy_previous_score`、`discard_all_remaining`、`shop_free_reroll_destroy`、`gold_on_discard_count`、`gain_reshuffle_charge_destroy`。移植时按 `kind` 建立 Effect Resolver，不要为具体卡牌 ID 写分支。
+`effect.kind` 使用数据驱动分派，目前 109 张有效果卡覆盖 60 种类型，包含位置/相邻、历史追溯、牌组规模、蓄势、生成、摧毁、成长、储存、经济与预判等家族。完整类型以 `CARD_LIBRARY` 的运行时数据为准；`keywords.js` 负责把这些底层类型归并成玩家可理解的统一关键字。移植时按 `kind` 建立 Effect Resolver，不要为具体卡牌 ID 写分支；`effect.keywords`、成长进度、储存分和生成来源也必须保留。
 
-`actions` 保存全局顺序；`eat_sequence` 与 `discard_sequence` 只接收对应行为。新 Buff 在当前牌结算后加入，所以只影响未来牌；永久成长写回 `deck` 中 UUID 相同的牌，并同步当前轮副本。重洗只回收 `spent_pile` 中仍存在于永久牌组的 UUID，自毁或被吞噬的牌不能返回。所有加法、乘法和计数都应复刻 `numbers.js` 的有限值与饱和规则，分数上限为 `9e15`。
+`actions` 保存全局顺序；`eat_sequence` 与 `discard_sequence` 只接收对应行为。新 Buff 在当前牌结算后加入，所以只影响未来牌；永久成长写回 `deck` 中 UUID 相同的牌，并同步当前轮副本。重洗只回收 `spent_pile` 中仍存在于永久牌组的 UUID，被摧毁的牌不能返回。所有加法、乘法和计数都应复刻 `numbers.js` 的有限值与饱和规则，分数上限为 `9e15`。
 
 ## Godot 输入手感复刻
 
@@ -89,6 +100,8 @@ Game (Control)
 └── OverlayLayer (CanvasLayer)
     ├── RuleDraft
     ├── QuestDraft
+    ├── QuestStatus
+    ├── DeckStatus
     ├── RoundSummary
     ├── Shop
     └── GameOver

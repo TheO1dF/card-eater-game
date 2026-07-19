@@ -7,16 +7,14 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <title>吃牌肉鸽 · CardEater</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-    <link rel="preload" href="./assets/cards/f001.webp?v=6" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/f002.webp?v=6" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/k001.webp?v=6" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/d001.webp?v=6" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/c001.webp?v=6" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/a001.webp?v=6" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/u001.webp?v=6" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards-atlas.webp?v=8" as="image" type="image/webp" fetchpriority="low" />
-    <link rel="preload" href="./assets/meta-atlas.webp?v=1" as="image" type="image/webp" fetchpriority="low" />
-    <link rel="stylesheet" href="./styles.css?v=6" />
+    <link rel="preload" href="./assets/cards/f001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/f002.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/k001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/d001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/c001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/a001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/u001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
+    <link rel="stylesheet" href="./styles.css?v=9" />
   </head>
   <body>
     <main class="app" id="app">
@@ -28,6 +26,8 @@
           </div>
           <div class="topbar-actions">
             <span class="phase-chip" id="phaseValue">准备中</span>
+            <button class="icon-button deck-info-button" id="deckInfoButton" type="button" aria-label="随时查看牌组">组</button>
+            <button class="icon-button quest-info-button" id="questInfoButton" type="button" aria-label="随时查看当前任务" disabled>任</button>
             <button class="icon-button" id="soundButton" type="button" aria-label="切换声音" aria-pressed="true">♪</button>
           </div>
         </header>
@@ -36,7 +36,7 @@
           <div class="hud-cell"><span>轮次</span><strong id="roundValue">1/15</strong></div>
           <div class="hud-cell"><span>总分</span><strong id="scoreValue">0</strong></div>
           <div class="hud-cell"><span>金币</span><strong id="goldValue">0</strong></div>
-          <div class="hud-cell"><span>剩余</span><strong id="remainingValue">7</strong></div>
+          <div class="hud-cell"><span id="remainingLabel">餐盘</span><strong id="remainingValue">7/7</strong></div>
           <div class="hud-cell timer-cell"><span>计时</span><strong id="timerValue">0.0s</strong></div>
         </section>
 
@@ -112,6 +112,30 @@
           </section>
         </div>
 
+        <div class="overlay quest-overlay" id="questStatus" role="dialog" aria-modal="true" aria-labelledby="questStatusTitle">
+          <section class="modal-panel quest-status-panel">
+            <div class="eyebrow">ACTIVE CONTRACT · 随时可查</div>
+            <h1 id="questStatusTitle">当前任务</h1>
+            <div id="questStatusContent"></div>
+            <button class="primary-button" id="questStatusClose" type="button">返回游戏</button>
+          </section>
+        </div>
+
+        <div class="overlay deck-overlay" id="deckStatus" role="dialog" aria-modal="true" aria-labelledby="deckStatusTitle">
+          <section class="modal-panel deck-status-panel">
+            <div class="eyebrow">PERMANENT DECK · 随时可查</div>
+            <h1 id="deckStatusTitle">我的永久牌组</h1>
+            <div class="deck-status-summary" id="deckStatusSummary"></div>
+            <div class="deck-pressure-summary" id="deckPressureSummary"></div>
+            <div class="deck-status-list" id="deckStatusList"></div>
+            <details class="keyword-glossary">
+              <summary>关键字释义</summary>
+              <div id="keywordGlossaryList"></div>
+            </details>
+            <button class="primary-button" id="deckStatusClose" type="button">返回游戏</button>
+          </section>
+        </div>
+
         <div class="overlay" id="roundSummary" role="dialog" aria-modal="true" aria-labelledby="summaryTitle">
           <section class="modal-panel summary-panel">
             <div class="eyebrow" id="summaryEyebrow">ROUND CLEAR</div>
@@ -139,20 +163,23 @@
               <div><div class="eyebrow">BETWEEN ROUNDS</div><h1 id="shopTitle">夜市商店</h1></div>
               <div class="shop-wallet"><span>金币</span><strong id="shopGold">0</strong></div>
             </div>
-            <p class="modal-lead" id="shopMessage">购买卡牌增强构筑，或花费金币精简牌组。</p>
+            <p class="modal-lead" id="shopMessage">购买卡牌与低级道具，或回收卡牌压缩牌组。</p>
+            <div class="shop-pressure-summary" id="shopPressureSummary"></div>
             <div class="shop-section-title"><span>本轮商品</span><small>点击购买</small></div>
             <div class="shop-grid" id="shopOfferList"></div>
+            <div class="shop-section-title"><span>低级道具</span><small>本局唯一 · 立即装备</small></div>
+            <div class="shop-item-grid" id="shopItemOfferList"></div>
             <div class="shop-reroll-row">
               <button class="shop-reroll-button" id="shopReroll" type="button">刷新商品 · $3</button>
               <small>购买不会自动补货；每次刷新费用递增</small>
             </div>
-            <div class="shop-section-title"><span>我的牌组</span><small>删牌费用 <b id="shopDeleteCost">0</b></small></div>
+            <div class="shop-section-title"><span>我的牌组</span><small>回收费用 <b id="shopDeleteCost">0</b> · 按稀有度返还金币</small></div>
             <div class="deck-manager" id="shopDeckList"></div>
             <button class="primary-button" id="shopContinue" type="button">结束商店 · 下一轮</button>
           </section>
         </div>
       </section>
     </main>
-    <script type="module" src="./js/main.js"></script>
+    <script type="module" src="./js/main.js?v=9"></script>
   </body>
 </html>

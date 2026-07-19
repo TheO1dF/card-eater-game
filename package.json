@@ -1,11 +1,12 @@
 {
   "name": "card-eater-demo",
-  "version": "0.6.0",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node scripts/serve.mjs",
     "build": "node scripts/build.mjs",
+    "export:cards": "node scripts/export-card-csv.mjs",
     "test": "node --test --test-isolation=none",
     "check": "node --check js/main.js && node --test --test-isolation=none && node scripts/build.mjs",
     "cf:projects": "npx wrangler pages project list",

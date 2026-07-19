@@ -29,6 +29,9 @@ const PHASE_TRANSITIONS = Object.freeze({
 export function createRoundState() {
   return {
     draw_pile: [],
+    action_budget: 0,
+    reserve_count: 0,
+    deck_size_at_start: 0,
     actions: [],
     eat_sequence: [],
     discard_sequence: [],
@@ -47,6 +50,12 @@ export function createRoundState() {
     effect_trigger_counts: {},
     consume_next_uuid: null,
     quest_flat_modifier: 0,
+    quest_action_modifiers: {},
+    quest_first_action_modifier: 0,
+    quest_last_action_modifier: 0,
+    generated_count: 0,
+    destroyed_count: 0,
+    grown_count: 0,
   };
 }
 
@@ -64,9 +73,11 @@ export function createInitialPlayerState(options = {}) {
     items: [],
     active_quest: null,
     quest_history: [],
+    pending_rewards: [],
     permanent_multipliers: [],
     remove_card_cost: 0,
     remove_count: 0,
+    last_shop_transaction: null,
     outcome: null,
     phase_history: [],
     round: createRoundState(),

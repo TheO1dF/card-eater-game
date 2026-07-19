@@ -14,6 +14,11 @@ const sheets = [
   "card-sprites-set-4.png",
   "card-sprites-set-5.png",
   "card-sprites-set-6.png",
+  "card-sprites-set-7.png",
+  "card-sprites-set-8.png",
+  "card-sprites-set-9.png",
+  "card-sprites-set-10.png",
+  "card-sprites-set-11.png",
 ];
 
 const targets = await fetch(`http://127.0.0.1:${debugPort}/json/list`).then((response) => response.json());
