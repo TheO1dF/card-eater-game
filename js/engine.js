@@ -1,5 +1,5 @@
 import { GAME_CONFIG, getNextMilestone } from "./config.js";
-import { getCardById } from "./data.js";
+import { createShopCardPool, getCardById } from "./data.js";
 import { getItemFinalMultipliers, resolveItemActionEffects } from "./items.js";
 import { formatScore, safeAdd, safeMultiply, safeProduct } from "./numbers.js";
 
@@ -25,6 +25,11 @@ function matchesPosition(state, position) {
   return false;
 }
 
+function isWrongEdibilityAction(action, card) {
+  return (card.edibility === "edible" && action === ACTIONS.DISCARD)
+    || (card.edibility === "inedible" && action === ACTIONS.EAT);
+}
+
 function getRuleFlatBonus(state, action, card) {
   return state.active_rules.reduce((total, rule) => {
     if (rule.scope !== "flat_bonus" || rule.action !== action || !matchesTarget(rule, card)) return total;
@@ -41,6 +46,13 @@ function consumeActionBuffs(state, action, card) {
   for (const buff of state.round.buffs) {
     if (buff.kind === "until_action" && action === buff.stop_action) {
       buff.remaining = 0;
+      continue;
+    }
+    if (buff.kind === "wrong_edibility_flat") {
+      if (buff.remaining > 0 && isWrongEdibilityAction(action, card)) {
+        flatBonus = safeAdd(flatBonus, buff.value ?? 0);
+        buff.remaining -= 1;
+      }
       continue;
     }
     const actionMatches = buff.action === "*" || buff.action === action;
@@ -110,6 +122,68 @@ function growPermanentCard(state, card, stat, amount) {
   return growth;
 }
 
+function changePermanentCard(state, card, stat, amount, limits = {}) {
+  const delta = Number(amount ?? 0);
+  if (!Number.isFinite(delta) || delta === 0) return 0;
+  const permanentCard = state.deck.find((item) => item.uuid === card.uuid);
+  if (!permanentCard) return 0;
+  const before = permanentCard[stat] ?? 0;
+  const next = Math.max(limits.min ?? -GAME_CONFIG.max_score, Math.min(limits.max ?? GAME_CONFIG.max_score, safeAdd(before, delta)));
+  permanentCard[stat] = next;
+  const copies = [card, ...state.round.draw_pile, ...state.round.spent_pile];
+  copies.forEach((copy) => {
+    if (copy?.uuid === card.uuid) copy[stat] = next;
+  });
+  if (next !== before) state.round.grown_count = (state.round.grown_count ?? 0) + 1;
+  return next - before;
+}
+
+function resetPermanentCardPoints(state, permanentCard) {
+  const eat = permanentCard.base_eat_points ?? permanentCard.eat_points ?? 0;
+  const discard = permanentCard.base_discard_points ?? permanentCard.discard_points ?? 0;
+  permanentCard.eat_points = eat;
+  permanentCard.discard_points = discard;
+  [...state.round.draw_pile, ...state.round.spent_pile].forEach((copy) => {
+    if (copy.uuid !== permanentCard.uuid) return;
+    copy.eat_points = eat;
+    copy.discard_points = discard;
+  });
+}
+
+function restoreReducedPermanentCardPoints(state, permanentCard) {
+  const baseEat = permanentCard.base_eat_points ?? permanentCard.eat_points ?? 0;
+  const baseDiscard = permanentCard.base_discard_points ?? permanentCard.discard_points ?? 0;
+  const eat = Math.max(permanentCard.eat_points ?? 0, baseEat);
+  const discard = Math.max(permanentCard.discard_points ?? 0, baseDiscard);
+  const restored = (eat - (permanentCard.eat_points ?? 0)) + (discard - (permanentCard.discard_points ?? 0));
+  permanentCard.eat_points = eat;
+  permanentCard.discard_points = discard;
+  [...state.round.draw_pile, ...state.round.spent_pile].forEach((copy) => {
+    if (copy.uuid !== permanentCard.uuid) return;
+    copy.eat_points = eat;
+    copy.discard_points = discard;
+  });
+  return restored;
+}
+
+function createGeneratedCard(state, sourceCard, template, options = {}) {
+  if (!template || state.deck.length >= GAME_CONFIG.max_deck_size) return null;
+  state.round.generated_count = (state.round.generated_count ?? 0) + 1;
+  const uuid = `${template.id}-generated-${sourceCard.uuid}-${state.current_round}-${state.round.generated_count}`;
+  const generated = {
+    ...template,
+    synergy_tags: [...(template.synergy_tags ?? [])],
+    effect: template.effect ? { ...template.effect, keywords: [...(template.effect.keywords ?? [])] } : null,
+    generated_from: sourceCard.id,
+    generated_label: sourceCard.name,
+    weakened: Boolean(options.weakened),
+    status_keywords: options.weakened ? ["弱化"] : [],
+    uuid,
+  };
+  state.deck.push(generated);
+  return generated;
+}
+
 function prepareImmediateEffect(state, action, card) {
   const effect = card.effect;
   if (!effect || action !== (effect.trigger_action ?? ACTIONS.EAT)) return { bonus: 0, detail: null };
@@ -133,9 +207,264 @@ function markEffect(entry, card, detail = card.effect?.description) {
   entry.effect_triggered = detail ?? card.name;
 }
 
-function applyCardEffect(state, action, card, entry) {
+function applyCardEffect(state, action, card, entry, random = Math.random) {
   const effect = card.effect;
   if (!effect) return;
+
+  if (effect.kind === "wrong_edibility_bonus" && entry.wrong_edibility) {
+    const bonus = effect.bonus ?? 0;
+    entry.effect_bonus = safeAdd(entry.effect_bonus, bonus);
+    markEffect(entry, card, `${card.name}：硬吃成功，额外 +${bonus}`);
+  }
+
+  if (effect.kind === "wrong_edibility_streak" && entry.wrong_edibility) {
+    const bonus = Math.min(effect.max_bonus ?? GAME_CONFIG.max_score,
+      (state.round.wrong_edibility_streak ?? 0) * (effect.bonus_per_streak ?? 0));
+    entry.effect_bonus = safeAdd(entry.effect_bonus, bonus);
+    markEffect(entry, card, `${card.name}：硬吃连击 ×${state.round.wrong_edibility_streak}，额外 +${bonus}`);
+  }
+
+  if (effect.kind === "wrong_history_scale" && entry.wrong_edibility) {
+    const previousWrong = Math.max(0, (state.round.wrong_edibility_count ?? 0) - 1);
+    const bonus = Math.min(effect.max_bonus ?? GAME_CONFIG.max_score, previousWrong * (effect.multiplier ?? 1));
+    entry.effect_bonus = safeAdd(entry.effect_bonus, bonus);
+    markEffect(entry, card, `${card.name}：吞入 ${previousWrong} 次硬吃记录，额外 +${bonus}`);
+  }
+
+  if (effect.kind === "wrong_edibility_setup_destroy" && action === effect.trigger_action && entry.wrong_edibility) {
+    addBuff(state, { kind: "wrong_edibility_flat", action: "*", remaining: 1, value: effect.bonus ?? 0, source: card.name });
+    const removed = state.deck.length > 1 ? removePermanentCard(state, card.uuid) : null;
+    if (removed) entry.destroyed_self = true;
+    markEffect(entry, card, `${card.name}：下一次硬吃 +${effect.bonus ?? 0}${removed ? "，摧毁自身" : ""}`);
+  }
+
+  if (effect.kind === "fruit_combo" && action === ACTIONS.EAT) {
+    const comboBefore = state.round.fruit_combo ?? 0;
+    const combo = comboBefore + Math.max(1, effect.combo_gain ?? 1);
+    state.round.fruit_combo = combo;
+    state.round.best_fruit_combo = Math.max(state.round.best_fruit_combo ?? 0, combo);
+    let bonus = Math.min(effect.max_bonus ?? GAME_CONFIG.max_score, combo * (effect.bonus_per_combo ?? 1));
+    if (comboBefore === 0) bonus = safeAdd(bonus, effect.opener_bonus ?? 0);
+    if (combo >= (effect.threshold ?? Number.POSITIVE_INFINITY)) bonus = safeAdd(bonus, effect.threshold_bonus ?? 0);
+    if (combo >= (effect.double_at ?? Number.POSITIVE_INFINITY)) bonus = safeMultiply(bonus, 2);
+    entry.effect_bonus = safeAdd(entry.effect_bonus, bonus);
+    entry.fruit_combo = combo;
+    entry.effect_log = `${card.name}：水果连击 ×${combo}`;
+
+    const generationReady = combo >= (effect.generate_at ?? Number.POSITIVE_INFINITY);
+    if (generationReady && consumeOncePerRound(state, card, effect)) {
+      let template = effect.generate_card_id ? getCardById(effect.generate_card_id) : null;
+      if (!template && effect.generate_random_type) {
+        const candidates = createShopCardPool().filter((candidate) => candidate.type === effect.generate_random_type);
+        template = candidates[Math.floor(random() * candidates.length)] ?? null;
+      }
+      const generated = createGeneratedCard(state, card, template, { weakened: effect.generate_weakened });
+      if (generated) entry.generated_card = generated.name;
+    }
+    if (combo >= (effect.grow_at ?? Number.POSITIVE_INFINITY)) {
+      const growth = changePermanentCard(state, card, "eat_points", effect.grow_amount ?? 0);
+      if (growth) entry.permanent_change = { stat: "eat_points", amount: growth };
+    }
+    markEffect(entry, card, `${card.name}：水果连击 ×${combo}，额外 +${bonus}${entry.generated_card ? `，生成「${entry.generated_card}」` : ""}`);
+  }
+
+  if (effect.kind === "anorexia") {
+    if (action === ACTIONS.EAT) {
+      const requestedGold = Math.max(0, effect.eat_gold_cost ?? 0);
+      const paidGold = Math.min(state.gold, requestedGold);
+      const unpaidGold = requestedGold - paidGold;
+      if (paidGold > 0) state.gold = safeAdd(state.gold, -paidGold);
+      if (requestedGold > 0) {
+        const penalty = unpaidGold * Math.max(0, effect.unpaid_score_penalty ?? 0);
+        entry.effect_bonus = safeAdd(entry.effect_bonus, -penalty);
+        entry.gold_change = -paidGold;
+        entry.payment = { requested: requestedGold, paid: paidGold, penalty };
+      }
+      if (effect.extreme) {
+        const removed = state.deck.length > 1 ? removePermanentCard(state, card.uuid) : null;
+        markEffect(entry, card, removed ? `${card.name}：极端厌食，摧毁自身` : `${card.name}：最后一张牌不会摧毁`);
+      } else {
+        const eatChange = changePermanentCard(state, card, "eat_points", -(effect.eat_loss ?? 1), { min: -5 });
+        const discardChange = changePermanentCard(state, card, "discard_points", effect.discard_gain ?? 1, { max: 12 });
+        entry.permanent_change = { eat: eatChange, discard: discardChange };
+        if (effect.buff_target_type) addBuff(state, {
+          kind: "flat", action: ACTIONS.EAT, target_type: effect.buff_target_type,
+          remaining: 1, value: effect.buff_add ?? 0, source: card.name,
+        });
+        const payment = requestedGold > 0
+          ? `，支付 ${paidGold}/${requestedGold} 金币${unpaidGold > 0 ? `，缺额罚分 -${unpaidGold * (effect.unpaid_score_penalty ?? 0)}` : ""}`
+          : "";
+        markEffect(entry, card, `${card.name}：厌食，吃分 ${eatChange} / 弃分 +${discardChange}${payment}`);
+      }
+    }
+    if (action === ACTIONS.DISCARD) {
+      const lost = Math.max(0, (card.base_eat_points ?? card.eat_points ?? 0) - (card.eat_points ?? 0));
+      const bonus = Math.floor(lost / Math.max(1, effect.discard_conversion_divisor ?? Number.POSITIVE_INFINITY));
+      entry.effect_bonus = safeAdd(entry.effect_bonus, Number.isFinite(bonus) ? bonus : 0);
+      if ((card.discard_points ?? 0) >= (effect.discard_gold_threshold ?? Number.POSITIVE_INFINITY)) {
+        state.round.pending_gold_bonus = safeAdd(state.round.pending_gold_bonus, effect.discard_gold ?? 0);
+      }
+      if (bonus > 0 || effect.discard_gold) markEffect(entry, card, `${card.name}：厌食转化 +${bonus}`);
+    }
+  }
+
+  if (effect.kind === "retention") {
+    if (action === ACTIONS.DISCARD) {
+      const previous = state.round.actions.at(-1);
+      let amount = safeAdd(effect.retain ?? 0, state.items
+        .filter((item) => item.effect?.kind === "retention_growth_bonus")
+        .reduce((sum, item) => safeAdd(sum, item.effect.amount ?? 0), 0));
+      if (previous?.type === effect.previous_type) amount = safeAdd(amount, effect.previous_retain_bonus ?? 0);
+      if (state.round.postponed_uuids?.includes(card.uuid)) amount = safeAdd(amount, effect.postponed_retain_bonus ?? 0);
+      const change = changePermanentCard(state, card, "eat_points", amount, { max: effect.max_eat_points ?? 30 });
+      entry.permanent_change = { stat: "eat_points", amount: change };
+      markEffect(entry, card, `${card.name}：留存，吃分永久 +${change}`);
+    }
+    if (action === ACTIONS.EAT && entry.printed_points >= (effect.burst_threshold ?? Number.POSITIVE_INFINITY)) {
+      const multiplier = Math.max(1, effect.burst_multiplier ?? 1);
+      const burst = safeMultiply(entry.printed_points, multiplier - 1);
+      entry.effect_bonus = safeAdd(entry.effect_bonus, burst);
+      state.round.pending_gold_bonus = safeAdd(state.round.pending_gold_bonus, effect.burst_gold ?? 0);
+      state.round.shop_discount = safeAdd(state.round.shop_discount, effect.burst_discount ?? 0);
+      if (effect.reset_after_eat) {
+        const permanentCard = state.deck.find((item) => item.uuid === card.uuid);
+        if (permanentCard) resetPermanentCardPoints(state, permanentCard);
+      }
+      markEffect(entry, card, `${card.name}：留存爆发 ×${multiplier}${effect.reset_after_eat ? "，牌面重置" : ""}`);
+    }
+  }
+
+  if (effect.kind === "drink_consume" && action === ACTIONS.EAT) {
+    if (effect.cleanse_deck) state.deck.forEach((owned) => restoreReducedPermanentCardPoints(state, owned));
+    state.round.pending_gold_bonus = safeAdd(state.round.pending_gold_bonus, effect.gold ?? 0);
+    for (const item of state.items.filter((owned) => owned.effect?.kind === "drink_first_gold")) {
+      const key = `item:${item.id}:drink-gold`;
+      if (state.round.effect_trigger_counts[key]) continue;
+      state.round.effect_trigger_counts[key] = 1;
+      state.round.pending_gold_bonus = safeAdd(state.round.pending_gold_bonus, item.effect.gold ?? 0);
+    }
+    state.round.reshuffle_charges = safeAdd(state.round.reshuffle_charges, effect.reshuffle_charges ?? 0);
+    if (effect.buff_add || effect.buff_multiplier) addBuff(state, {
+      kind: effect.buff_multiplier ? "multiplier" : "flat",
+      action: effect.buff_action ?? "*",
+      target_type: effect.buff_target_type,
+      remaining: 1,
+      value: effect.buff_multiplier ?? effect.buff_add,
+      source: card.name,
+    });
+    if (effect.generate_random_type) {
+      const candidates = createShopCardPool().filter((candidate) => candidate.type === effect.generate_random_type);
+      const template = candidates[Math.floor(random() * candidates.length)] ?? null;
+      const generated = createGeneratedCard(state, card, template, { weakened: effect.generate_weakened });
+      if (generated) entry.generated_card = generated.name;
+    }
+    const removed = state.deck.length > 1 ? removePermanentCard(state, card.uuid) : null;
+    markEffect(entry, card, `${card.name}：${removed ? "摧毁自身" : "最后一张牌不会摧毁"}${effect.gold ? `，金币 +${effect.gold}` : ""}${entry.generated_card ? `，生成${effect.generate_weakened ? "【弱化】" : ""}「${entry.generated_card}」` : ""}`);
+  }
+
+  if (effect.kind === "generate_random" && action === effect.trigger_action && consumeOncePerRound(state, card, effect)) {
+    const candidates = createShopCardPool().filter((candidate) => !effect.target_type || candidate.type === effect.target_type);
+    const template = candidates[Math.floor(random() * candidates.length)] ?? null;
+    const generated = createGeneratedCard(state, card, template, { weakened: effect.generate_weakened });
+    markEffect(entry, card, generated ? `${card.name}：生成${effect.generate_weakened ? "【弱化】" : ""}「${generated.name}」` : `${card.name}：牌组已满`);
+  }
+
+  if (effect.kind === "discard_for_gold" && action === effect.trigger_action && consumeOncePerRound(state, card, effect)) {
+    const gold = Math.max(0, effect.gold ?? 0);
+    state.gold = safeAdd(state.gold, gold);
+    entry.gold_change = safeAdd(entry.gold_change ?? 0, gold);
+    markEffect(entry, card, `${card.name}：牺牲分数，金币立即 +${gold}`);
+  }
+
+  if (effect.kind === "generate_by_decay" && action === effect.trigger_action && consumeOncePerRound(state, card, effect)) {
+    const template = getCardById(effect.card_id);
+    const generated = createGeneratedCard(state, card, template, { weakened: true });
+    const decay = changePermanentCard(state, card, effect.decay_stat ?? "discard_points", -(effect.decay ?? 1));
+    const permanent = state.deck.find((owned) => owned.uuid === card.uuid);
+    const shouldDestroy = permanent && (permanent[effect.decay_stat ?? "discard_points"] ?? 0) <= (effect.destroy_at ?? 0);
+    const removed = shouldDestroy && state.deck.length > 1 ? removePermanentCard(state, card.uuid) : null;
+    entry.permanent_change = { stat: effect.decay_stat ?? "discard_points", amount: decay };
+    if (generated) entry.generated_card = generated.name;
+    markEffect(entry, card, `${card.name}：生成【弱化】「${generated?.name ?? "失败"}」，自身弃分 ${decay}${removed ? "，降到 0 并摧毁自身" : ""}`);
+  }
+
+  if (effect.kind === "drain_random_to_self" && action === effect.trigger_action && consumeOncePerRound(state, card, effect)) {
+    const candidates = state.deck.filter((owned) => owned.uuid !== card.uuid && matchesTarget(effect, owned)
+      && (owned[effect.target_stat] ?? 0) > (effect.target_min ?? -GAME_CONFIG.max_score));
+    const target = candidates[Math.floor(random() * candidates.length)] ?? null;
+    if (target) {
+      const drained = -changePermanentCard(state, target, effect.target_stat, -(effect.target_loss ?? 1), { min: effect.target_min });
+      const gained = changePermanentCard(state, card, effect.self_stat ?? "discard_points", Math.min(drained, effect.self_gain ?? drained));
+      entry.point_changes = [
+        { card_name: target.name, stat: effect.target_stat, amount: -drained },
+        { card_name: card.name, stat: effect.self_stat ?? "discard_points", amount: gained },
+      ];
+      entry.permanent_change = { stat: effect.self_stat ?? "discard_points", amount: gained };
+      markEffect(entry, card, `${card.name}：${target.name} 吃分 -${drained} → 自身弃分 +${gained}`);
+    } else {
+      markEffect(entry, card, `${card.name}：没有可降低的可食用牌`);
+    }
+  }
+
+  if (effect.kind === "drain_type_to_self" && action === effect.trigger_action && consumeOncePerRound(state, card, effect)) {
+    let drainedTotal = 0;
+    const pointChanges = [];
+    state.deck.filter((owned) => owned.uuid !== card.uuid && matchesTarget(effect, owned)).forEach((owned) => {
+      const drained = -changePermanentCard(state, owned, effect.target_stat, -(effect.target_loss ?? 1), { min: effect.target_min });
+      if (drained <= 0) return;
+      drainedTotal = safeAdd(drainedTotal, drained);
+      pointChanges.push({ card_name: owned.name, stat: effect.target_stat, amount: -drained });
+    });
+    const gained = changePermanentCard(state, card, effect.self_stat ?? "discard_points", Math.min(effect.max_self_gain ?? drainedTotal, drainedTotal));
+    if (gained) pointChanges.push({ card_name: card.name, stat: effect.self_stat ?? "discard_points", amount: gained });
+    entry.point_changes = pointChanges;
+    entry.permanent_change = { stat: effect.self_stat ?? "discard_points", amount: gained };
+    markEffect(entry, card, `${card.name}：水果共降低 ${drainedTotal} 点，自身弃分 +${gained}`);
+  }
+
+  if (effect.kind === "swap_remaining_sides" && action === effect.trigger_action) {
+    state.round.draw_pile.slice(0, -1).forEach((remaining) => {
+      const eat = remaining.eat_points;
+      remaining.eat_points = remaining.discard_points;
+      remaining.discard_points = eat;
+    });
+    markEffect(entry, card, `${card.name}：剩余餐盘吃点与弃点互换`);
+  }
+
+  if (effect.kind === "celestial_sun" && action === effect.trigger_action) {
+    state.round.reshuffle_charges = safeAdd(state.round.reshuffle_charges, effect.charges ?? 1);
+    const removed = state.deck.length > 1 ? removePermanentCard(state, card.uuid) : null;
+    markEffect(entry, card, `${card.name}：自动重洗 +${effect.charges ?? 1}${removed ? "，摧毁自身" : ""}`);
+  }
+
+  if (effect.kind === "bonus_if_postponed" && action === effect.trigger_action && state.round.postponed_uuids?.includes(card.uuid)) {
+    entry.effect_bonus = safeAdd(entry.effect_bonus, effect.bonus ?? 0);
+    markEffect(entry, card, `${card.name}：后置兑现 +${effect.bonus ?? 0}`);
+  }
+
+  if (effect.kind === "pause_timer" && action === effect.trigger_action) {
+    state.round.timer_paused = true;
+    markEffect(entry, card, `${card.name}：本轮计时冻结`);
+  }
+
+  if (effect.kind === "bank_interest" && action === effect.trigger_action && consumeOncePerRound(state, card, effect)) {
+    const gold = Math.min(effect.max_gold ?? GAME_CONFIG.max_score, Math.floor(state.gold / Math.max(1, effect.divisor ?? 10)));
+    state.round.pending_gold_bonus = safeAdd(state.round.pending_gold_bonus, gold);
+    markEffect(entry, card, `${card.name}：存款利息 +${gold} 金币`);
+  }
+
+  if (effect.kind === "purify_deck" && action === effect.trigger_action) {
+    const restored = state.deck.reduce((sum, owned) => safeAdd(sum, restoreReducedPermanentCardPoints(state, owned)), 0);
+    markEffect(entry, card, `${card.name}：恢复 ${restored} 点红色降幅，绿色成长保留`);
+  }
+
+  if (effect.kind === "buff_deck_points" && action === effect.trigger_action && consumeOncePerRound(state, card, effect)) {
+    let changed = 0;
+    state.deck.filter((owned) => matchesTarget(effect, owned)).forEach((owned) => {
+      changed += changePermanentCard(state, owned, effect.stat ?? "eat_points", effect.amount ?? 0) !== 0 ? 1 : 0;
+    });
+    markEffect(entry, card, `${card.name}：${changed} 张牌永久 +${effect.amount ?? 0}`);
+  }
 
   if (effect.kind === "buff_next_action" && (effect.trigger_action === "*" || effect.trigger_action === action)) {
     const previous = state.round.actions.at(-1);
@@ -694,20 +1023,12 @@ function applyCardEffect(state, action, card, entry) {
         && generatedCount < (effect.count ?? 1)
         && state.deck.filter((owned) => owned.id === effect.card_id).length < (effect.max_generated_copies ?? GAME_CONFIG.max_deck_size)
         && state.deck.length < GAME_CONFIG.max_deck_size) {
-        state.round.generated_count = (state.round.generated_count ?? 0) + 1;
-        const uuid = `${generated.id}-generated-${card.uuid}-${state.current_round}-${state.round.generated_count}`;
-        state.deck.push({
-          ...generated,
-          synergy_tags: [...generated.synergy_tags],
-          effect: generated.effect ? { ...generated.effect, keywords: [...(generated.effect.keywords ?? [])] } : null,
-          generated_from: card.id,
-          uuid,
-        });
+        createGeneratedCard(state, card, generated, { weakened: effect.generate_weakened });
         generatedCount += 1;
       }
       if (generatedCount > 0 && effect.destroy_self) removePermanentCard(state, card.uuid);
       markEffect(entry, card, generatedCount > 0
-        ? `${card.name}：生成「${generated?.name}」×${generatedCount}${effect.destroy_self ? "，摧毁自身" : ""}`
+        ? `${card.name}：生成${effect.generate_weakened ? "【弱化】" : ""}「${generated?.name}」×${generatedCount}${effect.destroy_self ? "，摧毁自身" : ""}`
         : `${card.name}：生成上限已满`);
     }
   }
@@ -779,7 +1100,10 @@ function applyCardEffect(state, action, card, entry) {
       const removed = removePermanentCard(state, previous.card_uuid);
       if (removed) {
         const preyValue = Math.max(Math.abs(removed.eat_points ?? 0), Math.abs(removed.discard_points ?? 0));
-        const growth = Math.max(1, Math.min(effect.max_growth ?? 4, preyValue));
+        const itemGrowth = state.items
+          .filter((item) => item.effect?.kind === "devour_growth_bonus")
+          .reduce((sum, item) => safeAdd(sum, item.effect.amount ?? 0), 0);
+        const growth = safeAdd(Math.max(1, Math.min(effect.max_growth ?? 4, preyValue)), itemGrowth);
         const stat = effect.grow_stat === "eat_points" ? "eat_points" : "discard_points";
         growPermanentCard(state, card, stat, growth);
         markEffect(entry, card, `${card.name} 摧毁「${removed.name}」，${stat === "eat_points" ? "吃分" : "弃分"}成长 +${growth}`);
@@ -942,6 +1266,7 @@ export function evaluateRule(state, rule) {
     case "no_eat": return eat.length === 0 && discard.length > 0;
     case "max_eat": return eat.length <= rule.count;
     case "min_discard_food": return discard.filter((item) => item.edibility === "edible").length >= rule.count;
+    case "min_wrong_edibility": return (state.round.wrong_edibility_count ?? 0) >= rule.count;
     case "last_action": return matchesTarget(rule, actions.at(-1) ?? {}) && actions.at(-1)?.action === rule.action;
     case "first_last_actions": return actions.length >= 2
       && actions[0].action === rule.first_action
@@ -953,6 +1278,9 @@ export function evaluateRule(state, rule) {
     case "min_destroyed": return state.round.destroyed_count >= rule.count;
     case "min_generated": return state.round.generated_count >= rule.count;
     case "min_grown": return state.round.grown_count >= rule.count;
+    case "min_fruit_combo": return (state.round.best_fruit_combo ?? 0) >= rule.count;
+    case "min_postpone": return (state.round.postpone_count ?? 0) >= rule.count;
+    case "min_unique_action_types": return new Set(actions.map((item) => item.type)).size >= rule.count;
     case "no_consecutive_type": return actions.length >= 2
       && actions.every((item, index) => index === 0 || item.type !== actions[index - 1].type);
     case "exact_unique_action_types": return new Set(actions.map((item) => item.type)).size === rule.count;
@@ -963,12 +1291,15 @@ export function evaluateRule(state, rule) {
   }
 }
 
-export function createRoundEngine() {
+export function createRoundEngine(options = {}) {
+  const random = options.random ?? Math.random;
+
   function recordAction(state, action, card) {
     if (action !== ACTIONS.EAT && action !== ACTIONS.DISCARD) {
       throw new Error(`Unknown card action: ${action}`);
     }
 
+    if (action !== ACTIONS.EAT || card.type !== "水果") state.round.fruit_combo = 0;
     const immediateEffect = prepareImmediateEffect(state, action, card);
     if (card.effect?.kind === "clear_debuff" && action === ACTIONS.EAT) {
       state.round.buffs = state.round.buffs.filter((buff) => buff.kind !== "flat" || buff.value >= 0);
@@ -995,7 +1326,7 @@ export function createRoundEngine() {
       type: card.type,
       edibility: card.edibility,
       rarity: card.rarity,
-      keywords: [...(card.effect?.keywords ?? [])],
+      keywords: [...new Set([...(card.effect?.keywords ?? []), ...(card.status_keywords ?? [])])],
       action,
       printed_points: printedPoints,
       rule_bonus: ruleBonus,
@@ -1009,10 +1340,27 @@ export function createRoundEngine() {
       effect_triggered: immediateEffect.detail,
       points: 0,
     };
+    entry.wrong_edibility = isWrongEdibilityAction(action, card);
+    if (entry.wrong_edibility) {
+      state.round.wrong_edibility_count = safeAdd(state.round.wrong_edibility_count ?? 0, 1);
+      state.round.wrong_edibility_streak = safeAdd(state.round.wrong_edibility_streak ?? 0, 1);
+    } else {
+      state.round.wrong_edibility_streak = 0;
+    }
+    entry.wrong_edibility_streak = state.round.wrong_edibility_streak;
     if (immediateEffect.bonus !== 0) entry.effect_log = `${card.name}：净化转化`;
 
     // Effects are applied after consuming existing buffs, so newly created buffs affect future cards only.
-    applyCardEffect(state, action, card, entry);
+    applyCardEffect(state, action, card, entry, random);
+    if (card.weakened && state.deck.some((owned) => owned.uuid === card.uuid)) {
+      const removed = state.deck.length > 1 ? removePermanentCard(state, card.uuid) : null;
+      if (removed) {
+        entry.destroyed_self = true;
+        entry.effect_triggered = entry.effect_triggered
+          ? `${entry.effect_triggered} · 【弱化】结算后摧毁自身`
+          : `${card.name}：【弱化】结算后摧毁自身`;
+      }
+    }
     const flatValue = [printedPoints, ruleBonus, buffs.flat_bonus, itemEffects.flat_bonus, entry.quest_modifier]
       .reduce((sum, value) => safeAdd(sum, value), 0);
     entry.points = safeAdd(safeMultiply(flatValue, buffs.multiplier), entry.effect_bonus);
@@ -1031,8 +1379,9 @@ export function createRoundEngine() {
       id: rule.id,
       name: rule.name,
       description: rule.description,
+      selected_round: rule.selected_round ?? state.current_round,
       achieved: evaluateRule(state, rule),
-      multiplier: rule.multiplier ?? 1,
+      gold_reward: rule.gold_reward ?? 0,
     }));
   }
 
@@ -1043,9 +1392,6 @@ export function createRoundEngine() {
       ...state.round.final_multipliers,
       ...getItemFinalMultipliers(state),
       ...(state.permanent_multipliers ?? []).map((reward) => ({ name: reward.name, multiplier: reward.multiplier, source: "quest" })),
-      ...ruleResults
-        .filter((result) => result.achieved && result.multiplier !== 1)
-        .map((result) => ({ name: result.name, multiplier: result.multiplier })),
     ];
     const totalMultiplier = multipliers.reduce((value, item) => safeProduct(value, item.multiplier), 1);
     const roundScore = safeMultiply(cardScore, totalMultiplier);
@@ -1063,9 +1409,7 @@ export function createRoundEngine() {
       .filter((item) => item.effect_bonus !== 0 && item.effect_log)
       .forEach((item) => breakdown.push({ label: item.effect_log, text: `${item.effect_bonus > 0 ? "+" : ""}${formatScore(item.effect_bonus)}`, kind: "bonus" }));
 
-    if (multipliers.length === 0) {
-      breakdown.push({ label: "规则倍率", text: "×1" });
-    } else {
+    if (multipliers.length > 0) {
       multipliers.forEach((item) => {
         const sourceLabel = item.source === "item"
           ? "道具"
@@ -1075,17 +1419,47 @@ export function createRoundEngine() {
         breakdown.push({ label: `${sourceLabel} · ${item.name}`, text: `×${item.multiplier}`, kind: "rule" });
       });
     }
+
+    const contractGold = ruleResults
+      .filter((result) => result.achieved)
+      .reduce((sum, result) => safeAdd(sum, result.gold_reward), 0);
+    const speedGold = (state.round.elapsed_ms <= 12000 ? 1 : 0) + (state.round.elapsed_ms <= 8000 ? 1 : 0);
+    state.round.contract_gold_reward = contractGold;
+    state.round.speed_gold_reward = speedGold;
+    state.round.pending_gold_bonus = safeAdd(safeAdd(state.round.pending_gold_bonus, contractGold), speedGold);
+    ruleResults.forEach((result) => breakdown.push({
+      label: `持续合约 · ${result.name}`,
+      text: result.achieved ? `完成并移除 · +${result.gold_reward} 金币` : "未完成 · 下轮继续",
+      kind: result.achieved ? "bonus" : "detail",
+    }));
+    breakdown.push({
+      label: "限时经济",
+      text: speedGold > 0 ? `${state.round.elapsed_ms <= 8000 ? "8 秒内" : "12 秒内"} · +${speedGold} 金币` : "超过 12 秒 · +0",
+      kind: speedGold > 0 ? "bonus" : "detail",
+    });
     breakdown.push({ label: "本轮得分", text: `${roundScore >= 0 ? "+" : ""}${formatScore(roundScore)}`, kind: "total" });
 
     state.total_score = safeAdd(state.total_score, roundScore);
     state.gold = safeAdd(state.gold, state.round.pending_gold_bonus);
     state.round.pending_gold_bonus = 0;
 
+    const completedRuleIds = new Set(ruleResults.filter((result) => result.achieved).map((result) => result.id));
+    if (completedRuleIds.size > 0) {
+      state.active_rules = state.active_rules.filter((rule) => !completedRuleIds.has(rule.id));
+      for (const history of state.rule_history) {
+        if (completedRuleIds.has(history.id) && !history.completed_round) {
+          history.completed = true;
+          history.completed_round = state.current_round;
+        }
+      }
+    }
+
     return {
       card_score: cardScore,
       total_multiplier: totalMultiplier,
       round_score: roundScore,
       rule_results: ruleResults,
+      completed_rule_ids: [...completedRuleIds],
       breakdown,
     };
   }

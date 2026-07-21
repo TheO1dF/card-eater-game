@@ -56,6 +56,16 @@ export function createRoundState() {
     generated_count: 0,
     destroyed_count: 0,
     grown_count: 0,
+    fruit_combo: 0,
+    best_fruit_combo: 0,
+    wrong_edibility_count: 0,
+    wrong_edibility_streak: 0,
+    postponed_uuids: [],
+    postpone_count: 0,
+    timer_paused: false,
+    timer_frozen_elapsed_ms: null,
+    contract_gold_reward: 0,
+    speed_gold_reward: 0,
   };
 }
 

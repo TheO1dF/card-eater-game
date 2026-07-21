@@ -4,15 +4,22 @@ export const KEYWORD_LIBRARY = Object.freeze({
   "成长": "永久提高这张实体卡牌写明的吃分或弃分；重洗与下一轮都会保留。",
   "生成": "向永久牌组加入一张新卡；达到牌组或该效果的生成上限时不会加入。",
   "重洗": "将本轮已处理且仍在永久牌组中的牌重新洗回抽牌堆。",
-  "净化": "移除尚未结算的负面后续效果；已经扣除的分数不会返还。",
+  "净化": "只将低于卡牌原值的红色吃点或弃点恢复到原值；绿色成长不会被移除。",
   "追溯": "读取本轮此前已经完成的行动或得分，不会再次触发那些卡牌。",
-  "蓄势": "为之后符合条件的若干张牌保存加成；不符合条件的牌不会消耗次数。",
+  "蓄势": "为之后符合条件的若干张牌保存加成；不符合条件的牌不会减少剩余次数。",
   "位置": "检查本牌在本轮行动顺序中的首位、次位、中位或末位。",
   "规模": "按永久牌组当前的张数、类别数量或不同卡名数量计算。",
   "复制": "复制指定分数数值，但不会复制被复制卡牌的效果。",
   "经济": "改变金币、商店价格、刷新费用或餐盘扩容费用。",
   "储存": "把数值保存在这张实体牌上，跨轮保留，直到效果写明的结算方式将其清空。",
   "预判": "读取本轮尚未处理的牌，但不会改变它们的牌序或触发它们的效果。",
+  "水果连击": "连续吃下水果会提高水果连击；吃下非水果或弃牌会中断连击。",
+  "厌食": "这张快餐每次被吃后，吃分永久下降、弃分永久上升。",
+  "留存": "弃掉这张甜点会永久提高它的吃分，直到达到条件后吃下并重置。",
+  "弱化": "这张生成牌无论被吃或弃，结算完效果后都会摧毁自身。",
+  "后置": "将当前牌移动到本次餐盘的最后，不结算吃弃，也不占用行动次数。",
+  "机制": "直接改变牌序、计时、重洗或剩余牌面的基础规则。",
+  "硬吃": "故意选择不符合食性的吃或弃；承担较低牌面，换取硬吃牌与道具的额外收益。",
 });
 
 const KIND_KEYWORDS = Object.freeze({
@@ -80,9 +87,29 @@ const KIND_KEYWORDS = Object.freeze({
   store_or_cashout: ["储存"],
   rabbit_formation: ["规模"],
   discard_all_remaining: ["追溯"],
+  fruit_combo: ["水果连击"],
+  anorexia: ["厌食", "成长"],
+  retention: ["留存", "成长"],
+  drink_consume: ["摧毁"],
+  discard_for_gold: ["经济"],
+  generate_by_decay: ["生成", "成长", "摧毁", "弱化"],
+  drain_random_to_self: ["成长"],
+  drain_type_to_self: ["成长", "规模"],
+  wrong_edibility_bonus: ["硬吃"],
+  wrong_edibility_streak: ["硬吃", "追溯"],
+  wrong_history_scale: ["硬吃", "追溯"],
+  wrong_edibility_setup_destroy: ["硬吃", "蓄势", "摧毁"],
+  generate_random: ["生成"],
+  swap_remaining_sides: ["机制"],
+  celestial_sun: ["重洗", "摧毁"],
+  bonus_if_postponed: ["后置"],
+  pause_timer: ["机制"],
+  bank_interest: ["经济"],
+  purify_deck: ["净化"],
+  buff_deck_points: ["成长"],
 });
 
-const DESTROY_SYNONYMS = /永久销毁|永久吞掉|永久藏走|永久烹掉|永久清走|销毁|吞掉|藏走|烹掉|清走/g;
+const DESTROY_SYNONYMS = /永久销毁|永久吞掉|永久藏走|永久烹掉|永久清走|销毁|吞掉|藏走|烹掉|清走|消耗掉/g;
 
 export function canonicalizeDescription(description = "") {
   return String(description).replace(DESTROY_SYNONYMS, "摧毁");

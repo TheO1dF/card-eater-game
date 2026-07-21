@@ -16,10 +16,51 @@ const PHASE_LABELS = Object.freeze({
 const RARITY_CLASS = Object.freeze({ "普通": "common", "罕见": "uncommon", "稀有": "rare", "传奇": "legendary", "诅咒": "curse" });
 const EDIBILITY_LABEL = Object.freeze({ edible: "可食用", inedible: "不可食用" });
 const ROLE_LABEL = Object.freeze({ baseline: "基础", setup: "启动", payoff: "收割", sacrifice: "牺牲", engine: "成长引擎", economy: "经济" });
-const CARD_ART_VERSION = 8;
+const CARD_ART_VERSION = 11;
 const CARD_ATLAS_VERSION = 10;
 const cardArtCache = new Map();
+const freshArtClass = (card) => card.art_file?.includes("-v2.") ? " art-outlined" : "";
 const signed = (value) => value > 0 ? `+${formatScore(value)}` : formatScore(value);
+const pointTone = (card, stat) => {
+  const base = card[`base_${stat}`] ?? card[stat] ?? 0;
+  return (card[stat] ?? 0) > base ? "point-increased" : (card[stat] ?? 0) < base ? "point-decreased" : "point-base";
+};
+const pointValue = (card, stat) => {
+  const value = card[stat] ?? 0;
+  const base = card[`base_${stat}`] ?? value;
+  const delta = value - base;
+  const tone = pointTone(card, stat);
+  return `<span class="card-point-wrap ${tone}"><b class="card-point-value">${signed(value)}</b>${delta === 0 ? "" : `<small class="card-point-delta">${delta > 0 ? "▲" : "▼"}${Math.abs(delta)} · 原 ${signed(base)}</small>`}</span>`;
+};
+const cardEffectText = (card) => {
+  const status = (card.status_keywords ?? []).map((keyword) => `【${keyword}】`).join(" ");
+  const description = card.effect?.description ?? card.flavor ?? "";
+  return `${status}${status ? " " : ""}${description}`;
+};
+const effectTone = (entry = {}) => {
+  const keywords = entry.keywords ?? [];
+  if (entry.wrong_edibility || keywords.includes("硬吃")) return "hard";
+  if (entry.destroyed_self || keywords.includes("弱化") || keywords.includes("摧毁")) return "destroy";
+  const permanentValues = entry.permanent_change ? Object.values(entry.permanent_change).filter(Number.isFinite) : [];
+  if (entry.point_changes?.some((change) => change.amount < 0) || permanentValues.some((value) => value < 0)) return "mutation";
+  if (keywords.includes("重洗")) return "reshuffle";
+  if (keywords.includes("生成")) return "generate";
+  if (keywords.includes("经济") || (entry.gold_change ?? 0) !== 0) return "economy";
+  if (keywords.includes("成长") || entry.permanent_change) return "growth";
+  if (keywords.includes("水果连击")) return "fruit";
+  return "effect";
+};
+const EFFECT_PRESENTATION = Object.freeze({
+  hard: { icon: "!", label: "HARD EAT · 硬吃" },
+  destroy: { icon: "×", label: "DESTROY · 摧毁" },
+  economy: { icon: "$", label: "ECONOMY · 经济" },
+  generate: { icon: "+", label: "CREATE · 生成" },
+  reshuffle: { icon: "↻", label: "RESHUFFLE · 重洗" },
+  growth: { icon: "↑", label: "GROWTH · 成长" },
+  mutation: { icon: "↓", label: "POINT SHIFT · 点数变化" },
+  fruit: { icon: "◆", label: "FRUIT COMBO · 水果连击" },
+  effect: { icon: "✦", label: "CARD EFFECT · 效果" },
+});
 const cardArtUrl = (card) => card.runtime_art_mode === "atlas"
   ? `./assets/${card.runtime_atlas}?v=${CARD_ATLAS_VERSION}`
   : `./assets/${card.art_file}?v=${CARD_ART_VERSION}`;
@@ -126,7 +167,8 @@ function questElement(entry, state, onChoose) {
 
 function cardElement(card, active, depth) {
   const article = document.createElement("article");
-  article.className = `game-card card-${card.edibility} rarity-${RARITY_CLASS[card.rarity] ?? "common"}${active ? " is-active" : ""}`;
+  const pointChanged = pointTone(card, "eat_points") !== "point-base" || pointTone(card, "discard_points") !== "point-base";
+  article.className = `game-card card-${card.edibility} rarity-${RARITY_CLASS[card.rarity] ?? "common"}${active ? " is-active" : ""}${pointChanged ? " has-point-change" : ""}${card.weakened ? " is-weakened" : ""}${freshArtClass(card)}`;
   article.style.setProperty("--depth", depth);
   article.style.zIndex = String(10 - depth);
   article.dataset.cardUuid = card.uuid;
@@ -136,8 +178,8 @@ function cardElement(card, active, depth) {
     <div class="card-head"><span class="rarity-tag">${card.rarity}</span><span class="edibility-tag">${EDIBILITY_LABEL[card.edibility] ?? "特殊"}</span><span class="card-code">${card.id}</span></div>
     <div class="card-art" aria-hidden="true"><span class="game-sprite" style="${spriteStyle(card)}"></span></div>
     <div class="card-title"><small>${EDIBILITY_LABEL[card.edibility] ?? "特殊"} · ${card.type} · ${ROLE_LABEL[card.role] ?? "特殊"}</small><strong>${card.name}</strong></div>
-    <div class="card-scores"><span class="discard-score"><i>↑</i>弃 ${signed(card.discard_points)}</span><span class="eat-score"><i>↓</i>吃 ${signed(card.eat_points)}</span></div>
-    <div class="card-effect">${card.effect?.description ?? "没有额外效果"}</div>
+    <div class="card-scores"><span class="discard-score"><i><small>DISCARD</small>↑ 弃</i>${pointValue(card, "discard_points")}</span><span class="eat-score"><i><small>EAT</small>↓ 吃</i>${pointValue(card, "eat_points")}</span></div>
+    <div class="card-effect${card.effect ? "" : " is-flavor"}">${cardEffectText(card)}</div>
   `;
   return article;
 }
@@ -150,8 +192,8 @@ function ruleElement(rule, onChoose) {
   const tier = unlockRound >= 6 ? "后期" : unlockRound >= 3 ? "进阶" : "基础";
   button.innerHTML = `
     <span class="rule-icon">✦</span>
-    <span class="rule-copy"><small class="rule-tier">${tier}规则 · 第 ${unlockRound} 轮起</small><strong>${rule.name}</strong><em>${rule.description}</em></span>
-    <span class="rule-multiplier">${rule.multiplier === 1 ? `+${rule.bonus ?? 1}` : `×${rule.multiplier}`}</span>
+    <span class="rule-copy"><small class="rule-tier">${tier}合约 · 第 ${unlockRound} 轮起</small><strong>${rule.name}</strong><em>${rule.description}</em></span>
+    <span class="rule-multiplier">+${rule.gold_reward} 金币</span>
   `;
   button.addEventListener("click", () => onChoose(rule), { once: true });
   return button;
@@ -162,8 +204,8 @@ function selectedRuleElement(rule, index) {
   article.className = "collection-status-card rule-status-card";
   article.innerHTML = `
     <span class="collection-index">${String(index + 1).padStart(2, "0")}</span>
-    <span><small>第 ${getRuleUnlockRound(rule)} 轮起 · 永久规则</small><strong>${rule.name}</strong><em>${rule.description}</em></span>
-    <b>${rule.multiplier === 1 ? `+${rule.bonus ?? 1}` : `×${rule.multiplier}`}</b>
+    <span><small>第 ${rule.selected_round ?? "本"} 轮接取 · 完成前持续生效</small><strong>${rule.name}</strong><em>${rule.description}</em></span>
+    <b>+${rule.gold_reward} 金币</b>
   `;
   return article;
 }
@@ -180,7 +222,7 @@ function ownedItemElement(entry) {
 
 function shopCardElement(card, onBuy) {
   const button = document.createElement("button");
-  button.className = `shop-card rarity-${RARITY_CLASS[card.rarity] ?? "common"}`;
+  button.className = `shop-card rarity-${RARITY_CLASS[card.rarity] ?? "common"}${freshArtClass(card)}`;
   button.type = "button";
   const priceNote = card.shop_discount > 0
     ? `<small class="shop-price-note">基础 $${card.shop_base_price} · 优惠 -${card.shop_discount}</small>`
@@ -188,7 +230,7 @@ function shopCardElement(card, onBuy) {
   button.title = `基础价 ${card.shop_base_price ?? card.shop_price}；优惠 ${card.shop_discount ?? 0}`;
   button.innerHTML = `
     <span class="shop-card-icon game-sprite" style="${spriteStyle(card)}"></span>
-    <span class="shop-card-copy"><small>${card.rarity} · ${card.type} · ${ROLE_LABEL[card.role] ?? "特殊"}</small><strong>${card.name}</strong><em>吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</em><i>${card.effect?.description ?? "稳定基础价值"}</i>${priceNote}</span>
+    <span class="shop-card-copy"><small>${card.rarity} · ${card.type} · ${ROLE_LABEL[card.role] ?? "特殊"}</small><strong>${card.name}</strong><em>吃 ${pointValue(card, "eat_points")} / 弃 ${pointValue(card, "discard_points")}</em><i>${cardEffectText(card)}</i>${priceNote}</span>
     <span class="price-tag">$ ${card.shop_price}</span>
   `;
   button.addEventListener("click", () => onBuy(card));
@@ -197,30 +239,30 @@ function shopCardElement(card, onBuy) {
 
 function deckChipElement(card, cost, onRemove) {
   const button = document.createElement("button");
-  button.className = "deck-chip";
+  button.className = `deck-chip${freshArtClass(card)}`;
   button.type = "button";
   button.title = `${card.name}：支付 ${cost} 金币从永久牌组中删除，不返还金币`;
-  button.innerHTML = `<span class="game-sprite" style="${spriteStyle(card)}"></span><b>${card.name}</b><small>${EDIBILITY_LABEL[card.edibility]} · 吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</small><i>删除 $${cost} · 无返还</i>`;
+  button.innerHTML = `<span class="game-sprite" style="${spriteStyle(card)}"></span><b>${card.name}</b><small>${EDIBILITY_LABEL[card.edibility]} · 吃 ${pointValue(card, "eat_points")} / 弃 ${pointValue(card, "discard_points")}</small><i>删除 $${cost} · 无返还</i>`;
   button.addEventListener("click", () => onRemove(card.uuid));
   return button;
 }
 
 function deckStatusCardElement(card, quantity) {
   const article = document.createElement("article");
-  article.className = `deck-status-card rarity-${RARITY_CLASS[card.rarity] ?? "common"}`;
+  article.className = `deck-status-card rarity-${RARITY_CLASS[card.rarity] ?? "common"}${freshArtClass(card)}`;
   const progress = card.growth_uses ? `<small>成长进度：${card.growth_uses}/${card.effect?.every ?? "?"}</small>` : "";
   const stored = card.stored_score ? `<small>当前储存：${card.stored_score} 分</small>` : "";
   const generated = card.generated_from
-    ? `<small>生成来源：${getCardById(card.generated_from)?.name ?? card.generated_from}</small>`
+    ? `<small>生成来源：${card.generated_label ?? getCardById(card.generated_from)?.name ?? card.generated_from}</small>`
     : "";
   article.innerHTML = `
     <span class="deck-status-art game-sprite" style="${spriteStyle(card)}"></span>
     <span class="deck-status-copy">
       <span class="deck-status-head"><strong>${card.name}</strong><b>×${quantity}</b></span>
       <small>${card.id} · ${card.rarity} · ${card.type} · ${EDIBILITY_LABEL[card.edibility]}</small>
-      <em>吃 ${signed(card.eat_points)} / 弃 ${signed(card.discard_points)}</em>
+      <em>吃 ${pointValue(card, "eat_points")} / 弃 ${pointValue(card, "discard_points")}</em>
       ${generated}${stored}${progress}
-      <i>${card.effect?.description ?? "无类别、无效果。"}</i>
+      <i>${cardEffectText(card)}</i>
     </span>
   `;
   return article;
@@ -234,7 +276,7 @@ export function createUI(root) {
     eatZone: get("#eatZone"), discardZone: get("#discardZone"), swipeStatus: get("#swipeStatus"),
     draft: get("#ruleDraft"), draftList: get("#ruleDraftList"), summary: get("#roundSummary"),
     quest: get("#questDraft"), questList: get("#questDraftList"),
-    shop: get("#shopPanel"), shopOffers: get("#shopOfferList"), shopItems: get("#shopItemOfferList"), shopDeck: get("#shopDeckList"), welcome: get("#welcomeOverlay"),
+    shop: get("#shopPanel"), shopOffers: get("#shopOfferList"), shopThemeOffers: get("#shopThemeOfferList"), shopItems: get("#shopItemOfferList"), shopDeck: get("#shopDeckList"), welcome: get("#welcomeOverlay"),
     deleteConfirm: get("#deleteConfirm"),
     questStatus: get("#questStatus"), questInfoButton: get("#questInfoButton"),
     deckStatus: get("#deckStatus"), deckInfoButton: get("#deckInfoButton"),
@@ -345,9 +387,9 @@ export function createUI(root) {
 
   function openRuleStatus(state) {
     const rules = state.active_rules;
-    get("#ruleStatusSummary").innerHTML = `<b>${rules.length} 条永久规则</b><span>只有达成各自条件时才参与本轮结算。</span>`;
+    get("#ruleStatusSummary").innerHTML = `<b>${rules.length ? "当前持续合约" : "等待新合约"}</b><span>未完成会跨轮保留；完成后奖励金币、记录完成并从当前合约栏移除。</span>`;
     const list = get("#ruleStatusList");
-    if (rules.length === 0) list.innerHTML = '<p class="collection-status-empty">尚未选择规则。每轮开始时会从三条规则中选择一条。</p>';
+    if (rules.length === 0) list.innerHTML = '<p class="collection-status-empty">当前没有合约。下一轮开始时将从三条可完成合约中选择一条。</p>';
     else list.replaceChildren(...rules.map(selectedRuleElement));
     nodes.deckStatus?.classList.remove("show");
     nodes.questStatus?.classList.remove("show");
@@ -409,7 +451,7 @@ export function createUI(root) {
       };
     }
     if (nodes.ruleInfoButton) {
-      nodes.ruleInfoButton.title = `查看已选择规则（${state.active_rules.length} 条）`;
+      nodes.ruleInfoButton.title = "查看本轮合约";
       nodes.ruleInfoButton.onclick = () => {
         if (nodes.ruleStatus?.classList.contains("show")) nodes.ruleStatus.classList.remove("show");
         else openRuleStatus(state);
@@ -422,27 +464,15 @@ export function createUI(root) {
         else openItemStatus(state);
       };
     }
-    const reshuffleButton = get("#reshuffleButton");
-    if (reshuffleButton) {
+    const postponeButton = get("#postponeButton");
+    if (postponeButton) {
       const reshuffle = getReshuffleStatus(state);
-      const canReshuffle = state.phase === "Playing" && reshuffle.can_use;
-      reshuffleButton.disabled = !canReshuffle;
-      reshuffleButton.classList.toggle("is-ready", canReshuffle);
-      reshuffleButton.title = !reshuffle.within_limit
-        ? `牌组超过 ${GAME_CONFIG.reshuffle_max_deck_size} 张，无法重洗`
-        : `将 ${reshuffle.replayable_count} 张已处理牌洗回牌堆`;
+      postponeButton.disabled = state.phase !== "Playing" || state.round.draw_pile.length < 2;
+      postponeButton.title = "侧滑或点击：把当前牌移动到本次餐盘最后";
       const hint = get("#reshuffleHint");
-      if (!reshuffle.within_limit) {
-        setText(hint, `牌组需不超过 ${GAME_CONFIG.reshuffle_max_deck_size} 张`);
-      } else if (reshuffle.charges <= 0) {
-        setText(hint, "当前没有重洗次数");
-      } else if (reshuffle.replayable_count <= 0) {
-        setText(hint, `剩余 ${reshuffle.charges} 次 · 先处理卡牌`);
-      } else {
-        setText(hint, `可重洗 ${reshuffle.replayable_count} 张 · 剩余 ${reshuffle.charges} 次`);
-      }
-      const finishButton = get("#finishRoundButton");
-      if (finishButton) finishButton.hidden = !(canReshuffle && state.round.draw_pile.length === 0);
+      setText(hint, reshuffle.charges > 0
+        ? `自动重洗 ${reshuffle.charges} 次 · 无需点击`
+        : `已后置 ${state.round.postpone_count ?? 0} 次 · 左右侧滑可预览下一张`);
     }
     renderItems(state);
   }
@@ -455,7 +485,9 @@ export function createUI(root) {
     nodes.discardZone?.classList.toggle("is-target", direction === "discard" && strength > 0.12);
     if (nodes.swipeStatus) {
       nodes.swipeStatus.className = `swipe-status${direction ? ` ${direction}` : ""}`;
-      nodes.swipeStatus.textContent = strength > 0.12 ? (direction === "eat" ? "松手吃掉" : "松手弃掉") : "";
+      nodes.swipeStatus.textContent = strength > 0.12
+        ? (direction === "eat" ? "松手吃掉" : direction === "discard" ? "松手弃掉" : "松手后置")
+        : "";
       nodes.swipeStatus.style.opacity = String(strength);
     }
   }
@@ -486,12 +518,11 @@ export function createUI(root) {
       if (activeElement && activeCard) gesture.bind(activeElement, activeCard);
     },
     setGestureProgress,
-    bindControls({ onEat, onDiscard, onReshuffle, onFinishRound, onSound }) {
+    bindControls({ onEat, onDiscard, onPostpone, onSound }) {
       get("#eatButton")?.addEventListener("click", onEat);
       get("#discardButton")?.addEventListener("click", onDiscard);
       get("#soundButton")?.addEventListener("click", onSound);
-      get("#reshuffleButton")?.addEventListener("click", onReshuffle);
-      get("#finishRoundButton")?.addEventListener("click", onFinishRound);
+      get("#postponeButton")?.addEventListener("click", onPostpone);
       get("#questStatusClose")?.addEventListener("click", () => nodes.questStatus?.classList.remove("show"));
       get("#deckStatusClose")?.addEventListener("click", () => nodes.deckStatus?.classList.remove("show"));
       get("#ruleStatusClose")?.addEventListener("click", () => nodes.ruleStatus?.classList.remove("show"));
@@ -523,12 +554,63 @@ export function createUI(root) {
       stage.appendChild(floater);
       floater.addEventListener("animationend", () => floater.remove(), { once: true });
     },
-    showEffectFlash(message) {
+    showEffectFlash(message, entry = {}) {
+      const feed = get("#effectFeed");
+      const stage = get(".deck-stage");
+      if (!feed || !stage) return;
+      const tone = effectTone(entry);
+      const presentation = EFFECT_PRESENTATION[tone] ?? EFFECT_PRESENTATION.effect;
+      stage.dataset.lastEffectTone = tone;
+      stage.dataset.lastEffectMessage = message;
+      const flash = document.createElement("div");
+      flash.className = `effect-flash tone-${tone}`;
+      flash.innerHTML = `<b>${presentation.icon}</b><span><small>${presentation.label}</small><em>${message}</em></span>`;
+      feed.prepend(flash);
+      [...feed.children].slice(3).forEach((node) => node.remove());
+      stage.classList.remove("effect-pulse", "tone-effect", "tone-growth", "tone-fruit", "tone-hard", "tone-mutation", "tone-destroy", "tone-economy", "tone-generate", "tone-reshuffle");
+      void stage.offsetWidth;
+      stage.classList.add("effect-pulse", `tone-${tone}`);
+      window.setTimeout(() => stage.classList.remove("effect-pulse", `tone-${tone}`), 720);
+      flash.addEventListener("animationend", () => flash.remove(), { once: true });
+    },
+    showHardEat(streak, points) {
       const stage = get(".deck-stage");
       if (!stage) return;
+      stage.dataset.lastHardEatStreak = String(streak);
       const flash = document.createElement("div");
-      flash.className = "effect-flash";
-      flash.textContent = `✦ ${message}`;
+      flash.className = `hard-eat-flash${streak >= 3 ? " is-chain" : ""}`;
+      flash.innerHTML = `<small>WRONG SIDE · 硬吃</small><b>×${streak}</b><span>${points >= 0 ? `逆势得分 +${formatScore(points)}` : `承担 ${formatScore(points)} 分`}</span>`;
+      stage.appendChild(flash);
+      flash.addEventListener("animationend", () => flash.remove(), { once: true });
+    },
+    showPointMutation(entry, card) {
+      const stage = get(".deck-stage");
+      if (!stage) return;
+      const changes = [...(entry.point_changes ?? [])];
+      if (changes.length === 0 && entry.permanent_change) {
+        if (Number.isFinite(entry.permanent_change.eat)) changes.push({ card_name: card.name, stat: "eat_points", amount: entry.permanent_change.eat });
+        if (Number.isFinite(entry.permanent_change.discard)) changes.push({ card_name: card.name, stat: "discard_points", amount: entry.permanent_change.discard });
+        if (entry.permanent_change.stat && Number.isFinite(entry.permanent_change.amount)) changes.push({ card_name: card.name, ...entry.permanent_change });
+      }
+      if (Number.isFinite(entry.gold_change) && entry.gold_change !== 0) changes.push({ card_name: "金币", stat: "gold", amount: entry.gold_change });
+      if (changes.length === 0) return;
+      const burst = document.createElement("div");
+      burst.className = "point-mutation-burst";
+      burst.innerHTML = changes.slice(0, 5).map((change) => {
+        const label = change.stat === "eat_points" ? "吃点" : change.stat === "discard_points" ? "弃点" : "金币";
+        const tone = change.amount > 0 ? "up" : "down";
+        return `<span class="${tone}"><small>${change.card_name}</small><b>${label} ${change.amount > 0 ? "+" : ""}${change.amount}</b></span>`;
+      }).join("");
+      stage.appendChild(burst);
+      burst.addEventListener("animationend", () => burst.remove(), { once: true });
+    },
+    showFruitCombo(combo) {
+      const stage = get(".deck-stage");
+      if (!stage) return;
+      stage.dataset.lastFruitCombo = String(combo);
+      const flash = document.createElement("div");
+      flash.className = `fruit-combo-flash${combo >= 5 ? " is-fever" : ""}`;
+      flash.innerHTML = `<small>FRUIT COMBO</small><b>×${combo}</b><span>${combo === 1 ? "连续吃水果可叠加" : combo >= 5 ? "果汁爆发!" : "连击上升"}</span>`;
       stage.appendChild(flash);
       flash.addEventListener("animationend", () => flash.remove(), { once: true });
     },
@@ -545,7 +627,7 @@ export function createUI(root) {
       const progress = milestone.target > 0 ? Math.max(0, Math.min(100, state.total_score / milestone.target * 100)) : 100;
       setText(get("#draftRoundValue"), String(state.current_round).padStart(2, "0"));
       setText(get("#draftTargetText"), `第 ${milestone.round} 轮结算前累计达到 ${formatScore(milestone.target)} 分`);
-      setText(get("#draftTargetProgress"), `当前 ${formatScore(state.total_score)} · 还差 ${formatScore(scoreNeeded)} · 剩余 ${roundsRemaining} 轮 · 已有 ${state.active_rules.length} 条规则`);
+      setText(get("#draftTargetProgress"), `当前 ${formatScore(state.total_score)} · 还差 ${formatScore(scoreNeeded)} · 剩余 ${roundsRemaining} 轮 · 持续合约待选择`);
       get("#draftTargetFill")?.style.setProperty("width", `${progress}%`);
       nodes.draftList.replaceChildren(...options.map((rule) => ruleElement(rule, onChoose)));
       nodes.draft.classList.add("show");
@@ -596,10 +678,9 @@ export function createUI(root) {
 
       list.innerHTML = result.breakdown.map((item) => `<div class="receipt-line ${item.kind ?? ""}"><span>${item.label}</span><b>${item.text}</b></div>`).join("");
       ruleResults.innerHTML = result.rule_results
-        .filter((item) => item.multiplier !== 1)
-        .map((item) => `<span class="rule-result ${item.achieved ? "achieved" : "missed"}">${item.achieved ? "✓" : "·"} ${item.name}</span>`)
+        .map((item) => `<span class="rule-result ${item.achieved ? "achieved" : "missed"}">${item.achieved ? "✓" : "○"} ${item.name}${item.achieved ? ` · +${item.gold_reward} 金币 · 已移除` : " · 未完成，下轮继续"}</span>`)
         .join("");
-      get("#activeRulesList").innerHTML = state.active_rules.map((rule) => `<li><b>${rule.name}</b><span>${rule.description}</span></li>`).join("");
+      get("#activeRulesList").innerHTML = result.rule_results.map((rule) => `<li><b>${rule.name}</b><span>${rule.description}</span></li>`).join("");
       const questResult = get("#summaryQuestResult");
       if (result.quest_result) {
         questResult.hidden = false;
@@ -648,7 +729,7 @@ export function createUI(root) {
       nodes.summary.classList.add("show");
     },
     hideRoundSummary() { nodes.summary.classList.remove("show"); },
-    openShop(state, cards, itemOffers, onBuy, onBuyItem, onRemove, onPlateUpgrade, onReroll, onContinue, plateUpgradeStatus) {
+    openShop(state, cards, themedCards, themeType, itemOffers, onBuy, onBuyItem, onRemove, onPlateUpgrade, onReroll, onContinue, plateUpgradeStatus) {
       renderHud(state);
       const plate = getPlateSummary(state.deck.length, state.plate_capacity);
       get("#shopPlateSummary").innerHTML = `
@@ -657,6 +738,9 @@ export function createUI(root) {
       `;
       nodes.shopOffers.replaceChildren(...cards.map((card) => shopCardElement(card, onBuy)));
       if (cards.length === 0) nodes.shopOffers.innerHTML = '<p class="empty-shop">商品售罄</p>';
+      setText(get("#shopThemeTitle"), themeType ? `${themeType}专柜` : "同类专柜");
+      nodes.shopThemeOffers.replaceChildren(...themedCards.map((card) => shopCardElement(card, onBuy)));
+      if (themedCards.length === 0) nodes.shopThemeOffers.innerHTML = '<p class="empty-shop">同类商品售罄</p>';
       nodes.shopItems.replaceChildren(...itemOffers.map((entry) => shopItemElement(entry, onBuyItem)));
       if (itemOffers.length === 0) nodes.shopItems.innerHTML = '<p class="empty-shop">本局低级道具已售罄</p>';
       nodes.shopDeck.replaceChildren(...state.deck.map((card) => deckChipElement(

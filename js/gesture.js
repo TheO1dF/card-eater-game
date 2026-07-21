@@ -3,6 +3,8 @@ const DEFAULT_CONFIG = Object.freeze({
   max_threshold: 116,
   threshold_ratio: 0.22,
   flick_velocity: 0.62,
+  horizontal_flick_velocity: 0.52,
+  horizontal_threshold: 64,
   min_flick_distance: 24,
   projection_ms: 120,
   max_rotation: 11,
@@ -22,6 +24,8 @@ export function createGestureController(options = {}) {
   let deltaX = 0;
   let deltaY = 0;
   let velocityY = 0;
+  let velocityX = 0;
+  let lastX = 0;
   let lastY = 0;
   let lastTime = 0;
   let threshold = config.min_threshold;
@@ -29,17 +33,20 @@ export function createGestureController(options = {}) {
   let resolving = false;
 
   function emitProgress() {
-    const progress = clamp(Math.abs(deltaY) / threshold, 0, 1);
+    const horizontal = Math.abs(deltaX) > Math.abs(deltaY) * 1.08;
+    const progress = clamp(horizontal ? Math.abs(deltaX) / config.horizontal_threshold : Math.abs(deltaY) / threshold, 0, 1);
     config.onProgress?.({
       progress,
-      direction: deltaY < -2 ? "discard" : deltaY > 2 ? "eat" : null,
+      direction: horizontal ? "postpone" : deltaY < -2 ? "discard" : deltaY > 2 ? "eat" : null,
+      delta_x: deltaX,
       delta_y: deltaY,
     });
   }
 
   function paint() {
     if (!element) return;
-    const visualX = deltaX * 0.34;
+    const horizontal = Math.abs(deltaX) > Math.abs(deltaY) * 1.08;
+    const visualX = deltaX * (horizontal ? 0.78 : 0.34);
     const rotation = clamp(deltaX / 14, -config.max_rotation, config.max_rotation);
     const lift = Math.min(Math.abs(deltaY) / 900, 0.025);
     element.style.transform = `translate3d(${visualX}px, ${deltaY}px, 0) rotate(${rotation}deg) scale(${1.015 + lift})`;
@@ -68,7 +75,8 @@ export function createGestureController(options = {}) {
     deltaX = 0;
     deltaY = 0;
     velocityY = 0;
-    config.onProgress?.({ progress: 0, direction: null, delta_y: 0 });
+    velocityX = 0;
+    config.onProgress?.({ progress: 0, direction: null, delta_x: 0, delta_y: 0 });
     if (!immediate) {
       setTimeout(() => { if (element && !resolving) element.style.transition = ""; }, config.return_duration);
     }
@@ -80,8 +88,11 @@ export function createGestureController(options = {}) {
     const targetElement = element;
     const targetCard = card;
     const viewportTravel = Math.max(window.innerHeight * 0.72, targetElement.clientHeight * 1.35);
-    const exitY = action === "discard" ? -viewportTravel : viewportTravel;
-    const exitX = clamp(deltaX * 0.45, -80, 80);
+    const horizontalTravel = Math.max(window.innerWidth * 0.66, targetElement.clientWidth * 1.25);
+    const exitY = action === "postpone" ? 0 : action === "discard" ? -viewportTravel : viewportTravel;
+    const exitX = action === "postpone"
+      ? (deltaX < 0 ? -horizontalTravel : horizontalTravel)
+      : clamp(deltaX * 0.45, -80, 80);
     const rotation = clamp(deltaX / 10, -config.max_rotation * 1.5, config.max_rotation * 1.5);
 
     targetElement.style.pointerEvents = "none";
@@ -97,13 +108,19 @@ export function createGestureController(options = {}) {
     setTimeout(() => {
       resolving = false;
       if (action === "eat") config.onEat?.(targetCard);
-      else config.onDiscard?.(targetCard);
+      else if (action === "discard") config.onDiscard?.(targetCard);
+      else config.onPostpone?.(targetCard);
     }, config.exit_duration);
     return true;
   }
 
   function decideAction() {
+    const projectedX = deltaX + velocityX * config.projection_ms;
     const projectedY = deltaY + velocityY * config.projection_ms;
+    const hasHorizontalIntent = Math.abs(deltaX) > Math.abs(deltaY) * 1.08;
+    const horizontalDistance = Math.abs(projectedX) >= config.horizontal_threshold;
+    const horizontalFlick = Math.abs(deltaX) >= config.min_flick_distance && Math.abs(velocityX) >= config.horizontal_flick_velocity;
+    if (hasHorizontalIntent && (horizontalDistance || horizontalFlick)) return "postpone";
     const hasVerticalIntent = Math.abs(deltaY) >= Math.abs(deltaX) * 0.55;
     const distanceCommit = Math.abs(projectedY) >= threshold;
     const flickCommit = Math.abs(deltaY) >= config.min_flick_distance && Math.abs(velocityY) >= config.flick_velocity;
@@ -117,11 +134,13 @@ export function createGestureController(options = {}) {
     pointerId = event.pointerId;
     startX = event.clientX;
     startY = event.clientY;
+    lastX = event.clientX;
     lastY = event.clientY;
     lastTime = event.timeStamp;
     deltaX = 0;
     deltaY = 0;
     velocityY = 0;
+    velocityX = 0;
     threshold = clamp(element.clientHeight * config.threshold_ratio, config.min_threshold, config.max_threshold);
     element.style.transition = "none";
     element.setPointerCapture?.(pointerId);
@@ -132,10 +151,13 @@ export function createGestureController(options = {}) {
     event.preventDefault();
     const timeDelta = Math.max(1, event.timeStamp - lastTime);
     const instantVelocity = (event.clientY - lastY) / timeDelta;
+    const instantVelocityX = (event.clientX - lastX) / timeDelta;
     velocityY = velocityY * 0.68 + instantVelocity * 0.32;
+    velocityX = velocityX * 0.68 + instantVelocityX * 0.32;
     deltaX = event.clientX - startX;
     deltaY = event.clientY - startY;
     lastY = event.clientY;
+    lastX = event.clientX;
     lastTime = event.timeStamp;
     requestPaint();
   }
@@ -174,8 +196,9 @@ export function createGestureController(options = {}) {
       element.addEventListener("pointercancel", onPointerEnd, { passive: false });
     },
     commit(action) {
-      if (action !== "eat" && action !== "discard") return false;
-      deltaY = action === "eat" ? threshold : -threshold;
+      if (action !== "eat" && action !== "discard" && action !== "postpone") return false;
+      if (action === "postpone") deltaX = config.horizontal_threshold;
+      else deltaY = action === "eat" ? threshold : -threshold;
       return resolve(action);
     },
     cancel() {

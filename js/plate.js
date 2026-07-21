@@ -43,3 +43,14 @@ export function getPlateSummary(deckSize, plateCapacity) {
     reserve_count: Math.max(0, size - actionBudget),
   };
 }
+
+export function postponeCurrentCard(state) {
+  const pile = state?.round?.draw_pile;
+  if (!Array.isArray(pile) || pile.length < 2) return { success: false, reason: "not_enough_cards" };
+  const card = pile.pop();
+  pile.unshift(card);
+  state.round.postponed_uuids ??= [];
+  if (!state.round.postponed_uuids.includes(card.uuid)) state.round.postponed_uuids.push(card.uuid);
+  state.round.postpone_count = (state.round.postpone_count ?? 0) + 1;
+  return { success: true, card, remaining: pile.length };
+}

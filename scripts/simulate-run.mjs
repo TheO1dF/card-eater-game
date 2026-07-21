@@ -1,9 +1,8 @@
 import { CARD_ROLES } from "../js/balance.js";
-import { GAME_CONFIG, isQuestRound } from "../js/config.js";
+import { GAME_CONFIG } from "../js/config.js";
 import { createRoundEngine } from "../js/engine.js";
 import { applyRoundEndItems, applyRoundItemSetup } from "../js/items.js";
-import { takeRoundDrawPile } from "../js/plate.js";
-import { activatePendingQuestRewards, applyQuestRoundPenalty, finalizeQuest, randomDraftQuests, selectQuest } from "../js/quests.js";
+import { postponeCurrentCard, takeRoundDrawPile } from "../js/plate.js";
 import { activateReshuffle, getReshuffleStatus } from "../js/reshuffle.js";
 import { randomDraftRules } from "../js/rules.js";
 import { createShopService } from "../js/shop.js";
@@ -37,30 +36,6 @@ function correctAction(card) {
   return card.edibility === "edible" ? "eat" : "discard";
 }
 
-function questActionOverride(state, card) {
-  const condition = state.active_quest?.condition;
-  if (!condition || state.active_quest.finalized) return null;
-  const actions = state.round.actions;
-  const remaining = state.round.draw_pile.length;
-  if (condition.kind === "first_eat_last_discard") {
-    if (actions.length === 0) return "eat";
-    if (remaining === 1) return "discard";
-  }
-  if (condition.kind === "last_discard_and_score" && remaining === 1) return "discard";
-  if (condition.kind === "min_discard") {
-    const needed = condition.count - state.round.discard_sequence.length;
-    if (needed >= remaining) return "discard";
-  }
-  if (condition.kind === "min_negative_eat") {
-    const completed = state.round.eat_sequence.filter((entry) => entry.printed_points < 0).length;
-    if (completed < condition.count && card.eat_points < 0) return "eat";
-  }
-  if (condition.kind === "alternating_actions" && actions.length > 0) {
-    return actions.at(-1).action === "eat" ? "discard" : "eat";
-  }
-  return null;
-}
-
 function actionUtility(state, engine, card, action) {
   const trial = clone(state);
   const trialCard = trial.round.draw_pile.find((entry) => entry.uuid === card.uuid) ?? clone(card);
@@ -81,8 +56,9 @@ function actionUtility(state, engine, card, action) {
 }
 
 function chooseAction(state, engine, card) {
-  const questChoice = questActionOverride(state, card);
-  if (questChoice) return questChoice;
+  if (card.effect?.kind === "retention") {
+    return (card.eat_points ?? 0) >= (card.effect.burst_threshold ?? Number.POSITIVE_INFINITY) ? "eat" : "discard";
+  }
   const eat = actionUtility(state, engine, card, "eat");
   const discard = actionUtility(state, engine, card, "discard");
   return eat >= discard ? "eat" : "discard";
@@ -99,6 +75,19 @@ function playPlate(state, engine, random) {
       continue;
     }
     const card = state.round.draw_pile.at(-1);
+    const contract = state.active_rules[0];
+    const needsPostpone = contract?.scope === "min_postpone"
+      && state.round.postpone_count < contract.count
+      && !state.round.postponed_uuids.includes(card.uuid)
+      && state.round.draw_pile.length > 1;
+    const preserveFruitCombo = state.round.fruit_combo > 0
+      && card.type !== "水果"
+      && state.round.draw_pile.slice(0, -1).some((remaining) => remaining.type === "水果")
+      && !state.round.postponed_uuids.includes(card.uuid);
+    if (needsPostpone || preserveFruitCombo) {
+      postponeCurrentCard(state);
+      continue;
+    }
     const action = chooseAction(state, engine, card);
     engine.recordAction(state, action, card);
     state.round.draw_pile.pop();
@@ -113,39 +102,14 @@ function playPlate(state, engine, random) {
 
 function rulePotential(rule, state) {
   const matching = rule.target_type ? state.deck.filter((card) => card.type === rule.target_type).length : state.deck.length;
-  const multiplier = rule.multiplier ?? 1;
   let chance = 0.55;
-  if (rule.scope === "flat_bonus") chance = matching > 0 ? 0.95 : 0;
   if (["perfect_sort", "no_negative_action", "last_action_positive"].includes(rule.scope)) chance = 0.85;
-  if (rule.scope === "max_deck_size") chance = state.deck.length <= rule.count ? 1 : 0;
-  if (rule.scope === "min_deck_size") chance = state.deck.length >= rule.count ? 1 : 0.2;
-  if (rule.scope === "time_limit") chance = 1;
   if (rule.count && matching < rule.count && rule.target_type) chance *= 0.25;
-  return (multiplier - 1) * 20 * chance + (rule.bonus ?? 0) * matching * chance;
+  return (rule.gold_reward ?? 0) * chance;
 }
 
 function chooseRule(options, state) {
   return [...options].sort((a, b) => rulePotential(b, state) - rulePotential(a, state))[0];
-}
-
-function questRisk(quest, state) {
-  const condition = quest.condition;
-  let score = 0;
-  if (quest.penalty.kind === "add_permanent_void") score -= 18 * (quest.penalty.count ?? 1);
-  if (quest.penalty.kind === "lose_all_gold") score -= state.gold * 2;
-  if (condition.kind === "min_discard") score += 10;
-  if (condition.kind === "first_eat_last_discard") score += 8;
-  if (condition.kind === "alternating_actions") score += 5;
-  if (condition.kind === "min_unique_action_types") {
-    score += new Set(state.deck.map((card) => card.type)).size >= condition.count ? 8 : -10;
-  }
-  if (["min_destroyed", "min_generated", "min_reshuffles"].includes(condition.kind)) score -= 5;
-  if (quest.reward.item_id === "IT001" || quest.reward.item_id === "IT002" || quest.reward.item_id === "IT005") score += 7;
-  return score;
-}
-
-function chooseQuest(options, state) {
-  return [...options].sort((a, b) => questRisk(b, state) - questRisk(a, state))[0];
 }
 
 const ROLE_VALUE = Object.freeze({
@@ -164,6 +128,16 @@ function cardPurchaseValue(card, state, policy) {
   const kind = card.effect?.kind;
   let effect = ROLE_VALUE[card.role] ?? 0;
   if (["gain_gold", "gold_economy", "gold_from_deck_type", "gold_from_reserve", "shop_discount", "dynamic_shop_discount"].includes(kind)) effect += 7;
+  if (kind === "fruit_combo") effect += policy === "small" ? 9 : 5;
+  if (kind === "retention") effect += state.current_round <= 9 ? 7 : 3;
+  if (kind === "anorexia") effect += state.current_round <= 5 ? 5 : 2;
+  if (kind === "drink_consume") effect += card.effect.reshuffle_charges ? (policy === "small" ? 24 : 12) : 5;
+  if (kind === "discard_for_gold") effect += state.current_round <= 7 ? 7 : 2;
+  if (["drain_random_to_self", "drain_type_to_self"].includes(kind)) effect += state.current_round <= 8 ? 6 : 2;
+  if (["wrong_edibility_bonus", "wrong_edibility_streak", "wrong_history_scale", "wrong_edibility_setup_destroy"].includes(kind)) effect += 6;
+  if (kind === "generate_by_decay") effect += policy === "large" ? 4 : 1;
+  if (kind === "consume_previous_card") effect += policy === "small" ? 5 : 3;
+  if (["swap_remaining_sides", "bonus_if_postponed", "pause_timer"].includes(kind)) effect += 4;
   if (["gain_reshuffle_charge", "gain_reshuffle_charge_destroy"].includes(kind) && state.deck.length <= 10) effect += policy === "small" ? 18 : 11;
   if (["permanent_growth_eat", "permanent_growth_condition", "store_or_cashout"].includes(kind)) effect += state.current_round <= 7 ? 6 : 2;
   if (kind === "scale_by_deck" || kind === "scale_by_unique_deck") effect += policy === "large" ? 7 : 2;
@@ -185,13 +159,14 @@ function itemPurchaseValue(item, state, policy) {
   if (kind === "generated_card_gold") value += state.deck.filter((card) => card.generated_from).length * 2;
   if (kind === "keyword_first_shop_discount") value += state.deck.some((card) => card.effect?.keywords?.includes(item.effect.keyword)) ? 6 : -2;
   if (kind === "negative_action_free_reroll") value += state.deck.some((card) => card.eat_points < 0 || card.discard_points < 0) ? 5 : -2;
+  if (kind === "round_generate_weakened") value += state.deck.length <= state.plate_capacity ? 4 : 1;
   if (kind === "compact_first_each_bonus") value += state.deck.length <= item.effect.maximum ? (policy === "small" ? 11 : 7) : -3;
   if (kind === "full_plate_reroll_discount") value += hasReserve ? 0 : 5;
   if (["reserve_matching_type_bonus", "reserve_first_discard_gold", "reserve_purchase_refund", "reserve_threshold_multiplier"].includes(kind)) value += hasReserve ? 5 : 0;
   if (kind === "first_correct_buff_next" || kind === "keyword_first_bonus") value += 4;
   if (kind === "singleton_name_bonus") value += state.deck.filter((card, index, deck) => deck.findIndex((owned) => owned.id === card.id) === index).length * 0.35;
   if (kind === "singleton_type_bonus") value += new Set(state.deck.map((card) => card.type)).size * 0.3;
-  if (["wrong_edibility_bonus", "wrong_eat_buff_next_discard", "lower_side_bonus", "plate_edge_bonus", "last_correct_action_bonus"].includes(kind)) value += 3;
+  if (["wrong_edibility_bonus", "wrong_edibility_first_bonus", "wrong_eat_buff_next_discard", "lower_side_bonus", "plate_edge_bonus", "last_correct_action_bonus"].includes(kind)) value += 3;
   return value;
 }
 
@@ -205,7 +180,8 @@ function removalValue(card) {
 
 function shopTurn(state, shop, policy) {
   const events = [];
-  let cards = shop.getShopCards(state);
+  const themed = shop.getThemedShopCards(state);
+  let cards = [...shop.getShopCards(state), ...themed.cards];
   let items = shop.getShopItems(state);
   const buyBestItem = () => {
     const offer = items
@@ -245,7 +221,7 @@ function shopTurn(state, shop, policy) {
   }
 
   if (policy !== "small") buyBestCard();
-  else if (state.deck.length < 8) buyBestCard();
+  else if (state.deck.length <= 8) buyBestCard();
 
   const worst = [...state.deck].sort((a, b) => removalValue(a) - removalValue(b))[0];
   const shouldDelete = worst && (worst.rarity === "诅咒" || state.deck.length > state.plate_capacity + 1 || (policy === "small" && state.deck.length > 8));
@@ -256,10 +232,10 @@ function shopTurn(state, shop, policy) {
     if (shop.removeCard(state, worst.uuid)) events.push(`删:${worst.name}(${cost})`);
   }
 
-  if (events.length === 0 && state.gold >= 4 && shop.getRerollCost(state) <= 1) {
+  if (events.length === 0 && state.gold >= 4 && shop.getRerollCost(state) <= 2) {
     const reroll = shop.rerollShop(state);
     if (reroll.success) {
-      cards = reroll.cards;
+      cards = [...reroll.cards, ...reroll.themed_cards];
       items = reroll.items;
       events.push(`刷新(${reroll.cost})`);
       buyBestItem() || buyBestCard();
@@ -268,43 +244,37 @@ function shopTurn(state, shop, policy) {
   return events;
 }
 
-export function simulateRun({ seed = 1, policy = "balanced", verbose = false } = {}) {
+export function simulateRun({ seed = 1, policy = "balanced", verbose = false, enforce_milestones = true } = {}) {
   const random = seededRandom(seed);
   let nextId = 0;
   const createId = (card) => `${card.id}-sim-${seed}-${nextId += 1}`;
   const state = createInitialPlayerState({ create_id: createId });
-  const engine = createRoundEngine();
+  const engine = createRoundEngine({ random });
   const shop = createShopService({ random, create_id: createId });
   const log = [];
 
   for (let round = 1; round <= GAME_CONFIG.total_rounds; round += 1) {
     state.current_round = round;
-    if (state.active_quest?.round < round) state.active_quest = null;
-    activatePendingQuestRewards(state);
-    const canReshuffle = state.items.some((item) => item.effect?.kind === "round_reshuffle_charge")
-      || state.deck.some((card) => ["gain_reshuffle_charge", "gain_reshuffle_charge_destroy"].includes(card.effect?.kind));
-    const rules = randomDraftRules(3, state.active_rules, random, state.deck, round, { can_reshuffle: canReshuffle });
-    state.active_rules.push(chooseRule(rules, state));
-
-    if (isQuestRound(round)) {
-      const quests = randomDraftQuests(3, state, random);
-      selectQuest(state, chooseQuest(quests, state), createId);
+    if (state.active_rules.length === 0) {
+      const rules = randomDraftRules(3, state.rule_history.filter((entry) => entry.completed), random, state.deck, round);
+      const selected = chooseRule(rules, state);
+      state.active_rules = [{ ...selected, selected_round: round }];
+      state.rule_history.push({ id: selected.id, name: selected.name, selected_round: round, completed: false, completed_round: null });
     }
+    const activeRuleName = state.active_rules[0]?.name ?? "-";
 
     resetRoundState(state);
+    applyRoundItemSetup(state);
     const deck = shuffle(state.deck.map((card) => clone(card)), random);
     Object.assign(state.round, takeRoundDrawPile(deck, state.plate_capacity));
-    applyRoundItemSetup(state);
-    applyQuestRoundPenalty(state, random);
     playPlate(state, engine, random);
     state.round.elapsed_ms = 8000;
     const result = engine.finalizeRound(state);
     result.gold_reward = engine.getGoldReward(state);
     state.gold += result.gold_reward;
-    result.quest_result = finalizeQuest(state, result);
     applyRoundEndItems(state, { random });
     const milestone = engine.levelProgressCheck(state);
-    const failed = milestone.target > 0 && !milestone.passed;
+    const failed = enforce_milestones && milestone.target > 0 && !milestone.passed;
     const snapshot = {
       round,
       round_score: Math.round(result.round_score),
@@ -315,7 +285,7 @@ export function simulateRun({ seed = 1, policy = "balanced", verbose = false } =
       reserve: state.round.reserve_count,
       actions: state.round.actions.length,
       reshuffles: state.round.reshuffle_count,
-      quest: result.quest_result ? `${result.quest_result.name}:${result.quest_result.completed ? "完成" : "失败"}` : "-",
+      contract: `${activeRuleName}:${result.rule_results[0]?.achieved ? "完成" : "继续"}`,
       milestone: milestone.target > 0 ? `${milestone.passed ? "通过" : "失败"}(${milestone.target})` : "-",
       shop: [],
     };
@@ -331,16 +301,37 @@ export function simulateRun({ seed = 1, policy = "balanced", verbose = false } =
   return output;
 }
 
+export function simulateMilestoneCurves({ seeds = 40, policies = ["balanced", "small", "large"] } = {}) {
+  const milestones = Object.keys(GAME_CONFIG.milestone_targets).map(Number);
+  return policies.flatMap((policy) => milestones.map((round) => {
+    const scores = Array.from({ length: seeds }, (_, index) => {
+      const run = simulateRun({ seed: index + 1, policy, enforce_milestones: false });
+      return run.log.find((entry) => entry.round === round)?.total_score ?? 0;
+    }).sort((a, b) => a - b);
+    return {
+      policy,
+      round,
+      p50: scores[Math.floor((scores.length - 1) * 0.5)],
+      p75: scores[Math.floor((scores.length - 1) * 0.75)],
+      p90: scores[Math.floor((scores.length - 1) * 0.9)],
+      max: scores.at(-1),
+    };
+  }));
+}
+
 export function simulateBatch({ seeds = 40, policies = ["balanced", "small", "large"] } = {}) {
   return policies.map((policy) => {
     const runs = Array.from({ length: seeds }, (_, index) => simulateRun({ seed: index + 1, policy }));
     const wins = runs.filter((run) => run.won);
+    const scores = runs.map((run) => run.score).sort((a, b) => a - b);
     return {
       policy,
       runs: runs.length,
       wins: wins.length,
       win_rate: wins.length / runs.length,
-      median_score: runs.map((run) => run.score).sort((a, b) => a - b)[Math.floor(runs.length / 2)],
+      median_score: scores[Math.floor(runs.length / 2)],
+      p90_score: scores[Math.floor((runs.length - 1) * 0.9)],
+      max_score: scores.at(-1),
       median_rounds: runs.map((run) => run.rounds).sort((a, b) => a - b)[Math.floor(runs.length / 2)],
       median_gold: runs.map((run) => run.gold).sort((a, b) => a - b)[Math.floor(runs.length / 2)],
     };
@@ -353,4 +344,5 @@ if (process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].re
   const run = simulateRun({ seed, policy, verbose: true });
   console.log(JSON.stringify({ ...run, log: undefined }, null, 2));
   console.table(simulateBatch());
+  console.table(simulateMilestoneCurves());
 }

@@ -1,24 +1,25 @@
-import { GAME_CONFIG, isQuestRound } from "./config.js";
+import { GAME_CONFIG } from "./config.js";
 import { GAME_PHASES, createInitialPlayerState, resetRoundState, transitionPhase } from "./state.js";
 import { createGestureController } from "./gesture.js";
 import { createRoundEngine } from "./engine.js";
 import { createShopService } from "./shop.js";
 import { randomDraftRules } from "./rules.js";
 import { applyRoundEndItems, applyRoundItemSetup } from "./items.js";
-import { activatePendingQuestRewards, applyQuestRoundPenalty, finalizeQuest, randomDraftQuests, selectQuest } from "./quests.js";
 import { createUI } from "./ui.js";
 import { browserPlatform } from "./platform.js";
 import { initAudio, playSound, toggleBGM } from "./audio.js";
 import { safeAdd } from "./numbers.js";
-import { takeRoundDrawPile } from "./plate.js";
+import { postponeCurrentCard, takeRoundDrawPile } from "./plate.js";
 import { activateReshuffle, getReshuffleStatus } from "./reshuffle.js";
 
 const state = createInitialPlayerState({ create_id: browserPlatform.create_id });
-const engine = createRoundEngine();
+const engine = createRoundEngine({ random: browserPlatform.random });
 const shopService = createShopService({ random: browserPlatform.random, create_id: browserPlatform.create_id });
 const ui = createUI(document);
 
 let shopBuffer = null;
+let shopThemeBuffer = null;
+let shopThemeType = null;
 let shopItemBuffer = null;
 let actionLocked = true;
 let streak = { action: null, count: 0 };
@@ -57,7 +58,8 @@ function updateStreak(action) {
 function completeRound() {
   actionLocked = true;
   transitionPhase(state, GAME_PHASES.SCORING, { round: state.current_round });
-  state.round.elapsed_ms = Math.max(1, browserPlatform.now() - state.round.started_at_ms);
+  state.round.elapsed_ms = Math.max(1, state.round.timer_frozen_elapsed_ms
+    ?? (browserPlatform.now() - state.round.started_at_ms));
 
   const result = engine.finalizeRound(state);
   result.gold_reward = engine.getGoldReward(state);
@@ -65,7 +67,7 @@ function completeRound() {
   result.gold_eaten = new Set(state.round.eat_sequence.map((entry) => entry.card_uuid)).size;
   state.gold = safeAdd(state.gold, result.gold_reward);
   result.breakdown.splice(-1, 0, { label: "基础金币（每张实体牌每轮首次吃 +1）", text: `+${result.gold_reward}`, kind: "bonus" });
-  result.quest_result = finalizeQuest(state, result);
+  result.quest_result = null;
   result.round_end_item_results = applyRoundEndItems(state, { random: browserPlatform.random });
   result.round_end_item_results.forEach((message) => {
     result.breakdown.splice(-1, 0, { label: "道具 · 轮末变化", text: message, kind: "rule" });
@@ -91,11 +93,14 @@ function completeRound() {
 
   if (!outcome && shopBuffer === null) {
     shopBuffer = shopService.getShopCards(state);
+    const themed = shopService.getThemedShopCards(state);
+    shopThemeBuffer = themed.cards;
+    shopThemeType = themed.type;
     shopItemBuffer = shopService.getShopItems(state);
     // Warm the shop art while the summary is visible, but never make game
     // progression depend on image decoding. Safari may leave decode() pending
     // for a long time on a slow or interrupted connection.
-    void ui.preloadCardArt(shopBuffer);
+    void ui.preloadCardArt([...shopBuffer, ...shopThemeBuffer]);
   }
 
   ui.showRoundSummary(result, state, outcome, () => {
@@ -124,9 +129,21 @@ function resolveEmptyDrawPile() {
   if (state.round.draw_pile.length > 0) return false;
   const reshuffle = getReshuffleStatus(state);
   if (reshuffle.can_use) {
-    actionLocked = false;
+    const result = activateReshuffle(state, shuffle);
+    if (!result.success) {
+      completeRound();
+      return true;
+    }
+    actionLocked = true;
+    streak = { action: null, count: 0 };
     refreshTable();
-    ui.showEffectFlash(`牌堆已空 · 可重洗 ${reshuffle.replayable_count} 张，剩余 ${reshuffle.charges} 次`);
+    ui.showEffectFlash(`自动重洗 · ${result.replayed_count} 张牌无缝回到餐盘 · 剩余 ${result.remaining_charges} 次`);
+    ui.playReshuffleAnimation();
+    window.setTimeout(() => {
+      if (state.phase !== GAME_PHASES.PLAYING) return;
+      actionLocked = false;
+      refreshTable();
+    }, 580);
     return true;
   }
   completeRound();
@@ -147,6 +164,9 @@ function handleAction(action, card) {
 
   const hitCount = updateStreak(action);
   const entry = engine.recordAction(state, action, card);
+  if (state.round.timer_paused && state.round.timer_frozen_elapsed_ms === null) {
+    state.round.timer_frozen_elapsed_ms = Math.max(1, browserPlatform.now() - state.round.started_at_ms);
+  }
   state.round.draw_pile.pop();
   if (state.deck.some((item) => item.uuid === card.uuid)) state.round.spent_pile.push(card);
   if (state.round.consume_next_uuid) {
@@ -156,7 +176,10 @@ function handleAction(action, card) {
   }
 
   ui.showFloatingScore(entry.points, action, hitCount);
-  if (entry.effect_triggered) ui.showEffectFlash(entry.effect_triggered);
+  if (entry.wrong_edibility) ui.showHardEat(entry.wrong_edibility_streak, entry.points);
+  if (entry.fruit_combo) ui.showFruitCombo(entry.fruit_combo);
+  if (entry.effect_triggered) ui.showEffectFlash(entry.effect_triggered, entry);
+  ui.showPointMutation(entry, card);
   if (soundEnabled) {
     playSound(action, hitCount);
     if (entry.effect_triggered) playSound("effect", hitCount);
@@ -179,20 +202,48 @@ function handleAction(action, card) {
   }
 }
 
+function handlePostpone(card) {
+  if (state.phase !== GAME_PHASES.PLAYING) {
+    actionLocked = false;
+    return;
+  }
+  const currentCard = state.round.draw_pile.at(-1);
+  if (!currentCard || currentCard.uuid !== card.uuid) {
+    actionLocked = false;
+    refreshTable();
+    return;
+  }
+  const result = postponeCurrentCard(state);
+  if (!result.success) {
+    actionLocked = false;
+    ui.showEffectFlash("餐盘只剩一张牌，无法后置");
+    refreshTable();
+    return;
+  }
+  streak = { action: null, count: 0 };
+  ui.setGestureProgress({ progress: 0, direction: null });
+  ui.showEffectFlash(`后置「${card.name}」· 将在餐盘最后再次出现`);
+  if (soundEnabled) playSound("effect", 1);
+  actionLocked = false;
+  refreshTable();
+}
+
 const gesture = createGestureController({
   onEat: (card) => handleAction("eat", card),
   onDiscard: (card) => handleAction("discard", card),
+  onPostpone: (card) => handlePostpone(card),
   onProgress: (progress) => ui.setGestureProgress(progress),
   onCommit: () => { actionLocked = true; },
 });
 
 function prepareRound() {
   resetRoundState(state);
+  applyRoundItemSetup(state);
   const shuffledDeck = shuffle(state.deck.map((card) => ({ ...card, effect: card.effect ? { ...card.effect } : null })));
   Object.assign(state.round, takeRoundDrawPile(shuffledDeck, state.plate_capacity));
-  applyRoundItemSetup(state);
-  applyQuestRoundPenalty(state, browserPlatform.random);
   shopBuffer = null;
+  shopThemeBuffer = null;
+  shopThemeType = null;
   shopItemBuffer = null;
   streak = { action: null, count: 0 };
   actionLocked = true;
@@ -210,39 +261,31 @@ function enterRuleDraft() {
   if (state.phase === GAME_PHASES.INIT || state.phase === GAME_PHASES.NEXT_ROUND) {
     transitionPhase(state, GAME_PHASES.RULE_DRAFT, { round: state.current_round });
   }
-  if (state.active_quest?.round < state.current_round) state.active_quest = null;
-  const activatedRewards = activatePendingQuestRewards(state);
-  if (activatedRewards.length > 0) state.last_reward_activation = `任务奖励生效：${activatedRewards.join("、")}`;
   actionLocked = true;
-  const canReshuffle = state.items.some((item) => item.effect?.kind === "round_reshuffle_charge")
-    || state.deck.some((card) => card.effect?.kind === "gain_reshuffle_charge_destroy");
+  if (state.active_rules.length > 0) {
+    ui.renderHud(state);
+    prepareRound();
+    return;
+  }
   const options = randomDraftRules(
     GAME_CONFIG.draft_size,
-    state.active_rules,
+    state.rule_history.filter((entry) => entry.completed),
     browserPlatform.random,
     state.deck,
     state.current_round,
-    { can_reshuffle: canReshuffle },
   );
   ui.renderHud(state);
   ui.openRuleDraft(options, state, (rule) => {
     if (state.phase !== GAME_PHASES.RULE_DRAFT) return;
-    state.active_rules.push({ ...rule });
-    state.rule_history.push({ id: rule.id, name: rule.name, round: state.current_round });
+    state.active_rules = [{ ...rule, selected_round: state.current_round }];
+    state.rule_history.push({
+      id: rule.id,
+      name: rule.name,
+      selected_round: state.current_round,
+      completed: false,
+      completed_round: null,
+    });
     ui.closeRuleDraft();
-    if (isQuestRound(state.current_round) && state.active_quest?.round !== state.current_round) enterQuestDraft();
-    else prepareRound();
-  });
-}
-
-function enterQuestDraft() {
-  transitionPhase(state, GAME_PHASES.QUEST_DRAFT, { round: state.current_round });
-  actionLocked = true;
-  const options = randomDraftQuests(GAME_CONFIG.draft_size, state, browserPlatform.random);
-  ui.openQuestDraft(options, state, (quest) => {
-    if (state.phase !== GAME_PHASES.QUEST_DRAFT) return;
-    selectQuest(state, quest, browserPlatform.create_id);
-    ui.closeQuestDraft();
     prepareRound();
   });
 }
@@ -251,14 +294,22 @@ function enterShop() {
   if (state.phase !== GAME_PHASES.SHOP) return;
   if (shopBuffer === null) shopBuffer = shopService.getShopCards(state);
   else shopBuffer = shopService.repriceShopCards(state, shopBuffer);
+  if (shopThemeBuffer === null) {
+    const themed = shopService.getThemedShopCards(state);
+    shopThemeBuffer = themed.cards;
+    shopThemeType = themed.type;
+  } else shopThemeBuffer = shopService.repriceShopCards(state, shopThemeBuffer);
   if (shopItemBuffer === null) shopItemBuffer = shopService.getShopItems(state);
   ui.openShop(
     state,
     shopBuffer,
+    shopThemeBuffer,
+    shopThemeType,
     shopItemBuffer,
     (item) => {
       if (shopService.buyCard(state, item)) {
         shopBuffer = shopBuffer.filter((card) => card !== item);
+        shopThemeBuffer = shopThemeBuffer.filter((card) => card !== item);
         const refund = state.last_shop_transaction?.refund ?? 0;
         ui.setShopMessage(`购入「${item.name}」，已加入永久牌组${refund > 0 ? `；候补餐罩返还 ${refund} 金币` : ""}。`, "success");
       } else {
@@ -319,9 +370,11 @@ function enterShop() {
         ui.setShopMessage(`金币不足，刷新需要 ${reroll.cost} 金币。`, "error");
       } else {
         shopBuffer = reroll.cards;
+        shopThemeBuffer = reroll.themed_cards;
+        shopThemeType = reroll.theme_type;
         shopItemBuffer = reroll.items;
         ui.setShopMessage(reroll.free ? "使用免费刷新机会。" : `支付 ${reroll.cost} 金币刷新商品。`, "success");
-        void ui.preloadCardArt(shopBuffer);
+        void ui.preloadCardArt([...shopBuffer, ...shopThemeBuffer]);
       }
       enterShop();
     },
@@ -336,27 +389,6 @@ function enterShop() {
   );
 }
 
-function tryReshuffle() {
-  if (actionLocked || state.phase !== GAME_PHASES.PLAYING) return;
-  const result = activateReshuffle(state, shuffle);
-  if (!result.success) return;
-  actionLocked = true;
-  streak = { action: null, count: 0 };
-  ui.showEffectFlash(`重洗启动 · ${result.replayed_count} 张牌回到餐盘 · 剩余 ${result.remaining_charges} 次`);
-  refreshTable();
-  ui.playReshuffleAnimation();
-  window.setTimeout(() => {
-    if (state.phase !== GAME_PHASES.PLAYING) return;
-    actionLocked = false;
-    ui.renderHud(state);
-  }, 580);
-}
-
-function tryFinishRound() {
-  if (actionLocked || state.phase !== GAME_PHASES.PLAYING || state.round.draw_pile.length > 0) return;
-  completeRound();
-}
-
 function tryCommit(action) {
   if (actionLocked || state.phase !== GAME_PHASES.PLAYING) return;
   if (gesture.commit(action)) actionLocked = true;
@@ -365,8 +397,7 @@ function tryCommit(action) {
 ui.bindControls({
   onEat: () => tryCommit("eat"),
   onDiscard: () => tryCommit("discard"),
-  onReshuffle: tryReshuffle,
-  onFinishRound: tryFinishRound,
+  onPostpone: () => tryCommit("postpone"),
   onSound: () => {
     soundEnabled = !soundEnabled;
     if (soundEnabled) {
@@ -382,14 +413,14 @@ ui.bindControls({
 });
 
 window.addEventListener("keydown", (event) => {
-  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+  if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
   event.preventDefault();
-  tryCommit(event.key === "ArrowUp" ? "discard" : "eat");
+  tryCommit(event.key === "ArrowUp" ? "discard" : event.key === "ArrowDown" ? "eat" : "postpone");
 });
 
 function tickTimer() {
   if (state.phase === GAME_PHASES.PLAYING && state.round.started_at_ms !== null) {
-    ui.renderTimer(browserPlatform.now() - state.round.started_at_ms);
+    ui.renderTimer(state.round.timer_frozen_elapsed_ms ?? (browserPlatform.now() - state.round.started_at_ms));
   }
   requestAnimationFrame(tickTimer);
 }

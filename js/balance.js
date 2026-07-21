@@ -1,8 +1,8 @@
 export const RARITY_MODEL = Object.freeze({
-  "普通": Object.freeze({ price: 3, shop_weight: 58, expected_base: 1, synergy_ceiling: 3 }),
-  "罕见": Object.freeze({ price: 6, shop_weight: 27, expected_base: 2, synergy_ceiling: 7 }),
-  "稀有": Object.freeze({ price: 10, shop_weight: 12, expected_base: 3, synergy_ceiling: 16 }),
-  "传奇": Object.freeze({ price: 16, shop_weight: 3, expected_base: 1, synergy_ceiling: 40 }),
+  "普通": Object.freeze({ price: 5, shop_weight: 58, expected_base: 1, synergy_ceiling: 3 }),
+  "罕见": Object.freeze({ price: 8, shop_weight: 27, expected_base: 2, synergy_ceiling: 7 }),
+  "稀有": Object.freeze({ price: 12, shop_weight: 12, expected_base: 3, synergy_ceiling: 16 }),
+  "传奇": Object.freeze({ price: 18, shop_weight: 3, expected_base: 1, synergy_ceiling: 40 }),
 });
 
 export const CARD_ROLES = Object.freeze({

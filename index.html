@@ -11,10 +11,11 @@
     <link rel="preload" href="./assets/cards/f002.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
     <link rel="preload" href="./assets/cards/k001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
     <link rel="preload" href="./assets/cards/d001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/b005.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
     <link rel="preload" href="./assets/cards/c001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
     <link rel="preload" href="./assets/cards/a001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
     <link rel="preload" href="./assets/cards/u001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="stylesheet" href="./styles.css?v=14" />
+    <link rel="stylesheet" href="./styles.css?v=15" />
   </head>
   <body>
     <main class="app" id="app">
@@ -27,9 +28,9 @@
           <div class="topbar-actions">
             <span class="phase-chip" id="phaseValue">准备中</span>
             <button class="icon-button deck-info-button" id="deckInfoButton" type="button" aria-label="随时查看牌组">组</button>
-            <button class="icon-button rule-info-button" id="ruleInfoButton" type="button" aria-label="随时查看已选规则">规</button>
+            <button class="icon-button rule-info-button" id="ruleInfoButton" type="button" aria-label="随时查看当前持续合约">约</button>
             <button class="icon-button item-info-button" id="itemInfoButton" type="button" aria-label="随时查看已选道具">具</button>
-            <button class="icon-button quest-info-button" id="questInfoButton" type="button" aria-label="随时查看当前任务" disabled>任</button>
+            <button class="icon-button quest-info-button" id="questInfoButton" type="button" aria-label="旧危险任务已停用" disabled hidden>任</button>
             <button class="icon-button" id="soundButton" type="button" aria-label="切换声音" aria-pressed="true">♪</button>
           </div>
         </header>
@@ -59,6 +60,7 @@
             <div class="deck-empty" id="deckEmpty" hidden>牌堆清空</div>
             <div class="swipe-status" id="swipeStatus" aria-hidden="true"></div>
           </div>
+          <div class="effect-feed" id="effectFeed" aria-live="polite" aria-atomic="false"></div>
 
           <div class="action-zone eat-zone" id="eatZone" aria-hidden="true">
             <span class="zone-arrow">↓</span><b>吃 牌</b><small>EAT</small>
@@ -68,9 +70,8 @@
         <footer class="controls">
           <button class="action-button discard-button" id="discardButton" type="button"><kbd>↑</kbd><span>弃掉</span></button>
           <div class="control-center">
-            <button class="reshuffle-button" id="reshuffleButton" type="button" disabled><span>↻ 重洗</span><b id="reshuffleCount">0</b></button>
-            <small id="reshuffleHint">先处理卡牌以启动重洗</small>
-            <button class="finish-round-button" id="finishRoundButton" type="button" hidden>不重洗 · 结束本轮</button>
+            <button class="reshuffle-button postpone-button" id="postponeButton" type="button"><span>↔ 后置</span></button>
+            <small id="reshuffleHint">左右侧滑可预览并后置当前牌</small>
           </div>
           <button class="action-button eat-button" id="eatButton" type="button"><kbd>↓</kbd><span>吃掉</span></button>
         </footer>
@@ -80,16 +81,16 @@
             <div class="welcome-logo" aria-hidden="true"><span>CE</span></div>
             <div class="eyebrow">EAT SMART · DISCARD FAST</div>
             <h1 id="welcomeTitle">吃牌肉鸽</h1>
-            <p>逐张判断吃或弃，再用永久规则与商店构筑把分数滚起来。</p>
+            <p>逐张判断吃、弃或后置，用可控牌序把不同流派的引擎滚起来。</p>
             <div class="welcome-objective">
               <span>明确目标</span>
-              <strong>第 5 / 10 / 15 轮累计达到 120 / 750 / 4000 分</strong>
+              <strong>第 5 / 10 / 15 轮累计达到 200 / 700 / 1500 分</strong>
               <small>在目标轮结算时未达标，本局立即结束。</small>
             </div>
             <div class="welcome-loop" aria-label="每轮流程">
-              <span><b>① 选规则</b><small>永久保留；达成条件才生效</small></span>
-              <span><b>② 吃与弃</b><small>吃通常赚钱，弃通常得分更稳</small></span>
-              <span><b>③ 逛商店</b><small>在买牌、扩容、删牌间取舍</small></span>
+              <span><b>① 接合约</b><small>未完成会保留；完成领奖并移除</small></span>
+              <span><b>② 吃弃后置</b><small>连续水果、储蓄甜点、转换快餐</small></span>
+              <span><b>③ 逛商店</b><small>随机卡与同类卡并列，定向成型</small></span>
             </div>
             <div class="welcome-legend">
               <span class="legend-edible">↓ 可食用 · 通常吃牌得分</span>
@@ -108,9 +109,9 @@
         <div class="overlay" id="ruleDraft" role="dialog" aria-modal="true" aria-labelledby="ruleDraftTitle">
           <section class="modal-panel draft-panel">
             <div class="eyebrow">ROUND <span id="draftRoundValue">01</span> · RULE PICK</div>
-            <h1 id="ruleDraftTitle">选择一条规则</h1>
-            <p class="modal-lead">每轮选 1 条并永久保留；结算时达成条件才获得加成，未达成不会扣分。</p>
-            <div class="rule-help"><b>规则怎么用</b><span>右侧是奖励倍率或固定加分。先选当前牌组容易稳定达成的条件，再围绕它买牌。</span></div>
+            <h1 id="ruleDraftTitle">选择持续合约</h1>
+            <p class="modal-lead">同时只持有 1 条；未完成会跨轮保留，完成后获得金币并移除，下一轮再选择新合约。</p>
+            <div class="rule-help"><b>永久限时经济</b><span>12 秒内清空额外 +1 金币；8 秒内再 +1。合约奖励与限时奖励可以同时获得。</span></div>
             <div class="target-banner">
               <span>明确目标</span>
               <strong id="draftTargetText">第 5 轮结算前累计达到 100 分</strong>
@@ -142,8 +143,8 @@
 
         <div class="overlay collection-overlay" id="ruleStatus" role="dialog" aria-modal="true" aria-labelledby="ruleStatusTitle">
           <section class="modal-panel collection-status-panel">
-            <div class="eyebrow">PERMANENT RULES · 随时可查</div>
-            <h1 id="ruleStatusTitle">已选择的规则</h1>
+            <div class="eyebrow">ROUND CONTRACT · 随时可查</div>
+            <h1 id="ruleStatusTitle">当前持续合约</h1>
             <div class="collection-status-summary" id="ruleStatusSummary"></div>
             <div class="collection-status-list" id="ruleStatusList"></div>
             <button class="primary-button" id="ruleStatusClose" type="button">返回游戏</button>
@@ -179,7 +180,7 @@
           <section class="modal-panel summary-panel">
             <div class="eyebrow" id="summaryEyebrow">ROUND CLEAR</div>
             <h1 id="summaryTitle">本轮结算</h1>
-            <p class="modal-lead" id="summaryTip">每条得分只计算一次，规则倍率在最后结算。</p>
+            <p class="modal-lead" id="summaryTip">卡牌效果结算得分；持续合约完成时与限时条件结算金币。</p>
             <div class="milestone-summary" aria-label="阶段目标进度">
               <span id="summaryMilestoneRounds">距离第 5 轮目标还有 4 轮</span>
               <strong id="summaryMilestoneScore">累计 0 / 目标 100 分</strong>
@@ -189,7 +190,7 @@
             <div class="quest-result" id="summaryQuestResult" hidden></div>
             <div class="rule-result-list" id="summaryRuleResults"></div>
             <details class="active-rules">
-              <summary>查看本局永久规则</summary>
+              <summary>查看本轮合约结算</summary>
               <ul id="activeRulesList"></ul>
             </details>
             <button class="primary-button" id="summaryContinueBtn" type="button">进入商店</button>
@@ -208,13 +209,15 @@
               <span><b>永久餐盘扩容</b><small id="shopPlateUpgradeDetail">当前 10 张 → 11 张</small></span>
               <button class="shop-reroll-button" id="shopPlateUpgrade" type="button">永久扩容 +1 · $3</button>
             </div>
-            <div class="shop-section-title"><span>本轮商品</span><small>点击购买</small></div>
+            <div class="shop-section-title"><span>本轮商品</span><small>三张随机卡牌</small></div>
             <div class="shop-grid" id="shopOfferList"></div>
+            <div class="shop-section-title"><span id="shopThemeTitle">同类专柜</span><small>三张相同类别 · 定向构筑</small></div>
+            <div class="shop-grid shop-theme-grid" id="shopThemeOfferList"></div>
             <div class="shop-section-title"><span>低级道具</span><small>本局唯一 · 立即装备</small></div>
             <div class="shop-item-grid" id="shopItemOfferList"></div>
             <div class="shop-reroll-row">
-              <button class="shop-reroll-button" id="shopReroll" type="button">刷新商品 · $1</button>
-              <small>购买不会自动补货；刷新按 1、2、3……递增</small>
+              <button class="shop-reroll-button" id="shopReroll" type="button">刷新商品 · $2</button>
+              <small>购买不会自动补货；刷新按 2、3、4……递增</small>
             </div>
             <div class="shop-section-title"><span>我的牌组</span><small>删牌费用 <b id="shopDeleteCost">0</b> · 不返还金币</small></div>
             <div class="deck-manager" id="shopDeckList"></div>
@@ -236,6 +239,6 @@
         </div>
       </section>
     </main>
-    <script type="module" src="./js/main.js?v=14"></script>
+    <script type="module" src="./js/main.js?v=15"></script>
   </body>
 </html>

@@ -71,23 +71,46 @@ async function clickElement(selector) {
 async function swipeElement(selector, direction) {
   const rect = await evaluate(`(() => {
     const bounds = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect();
-    return bounds ? { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2, height: bounds.height } : null;
+    return bounds ? { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2, width: bounds.width, height: bounds.height } : null;
   })()`);
   if (!rect) throw new Error(`Element not found: ${selector}`);
-  const distance = Math.max(110, rect.height * 0.34);
-  const endY = rect.y + (direction === "eat" ? distance : -distance);
+  const horizontal = direction === "postpone";
+  const distance = Math.max(110, (horizontal ? rect.width : rect.height) * 0.34);
+  const endX = horizontal ? rect.x + distance : rect.x;
+  const endY = horizontal ? rect.y : rect.y + (direction === "eat" ? distance : -distance);
   await send("Input.dispatchMouseEvent", { type: "mousePressed", x: rect.x, y: rect.y, button: "left", buttons: 1, clickCount: 1 });
   await wait(24);
-  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: rect.x, y: (rect.y + endY) / 2, button: "left", buttons: 1 });
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: (rect.x + endX) / 2, y: (rect.y + endY) / 2, button: "left", buttons: 1 });
   await wait(24);
-  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: rect.x, y: endY, button: "left", buttons: 1 });
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: endX, y: endY, button: "left", buttons: 1 });
   await wait(24);
-  await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: rect.x, y: endY, button: "left", buttons: 0, clickCount: 1 });
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: endX, y: endY, button: "left", buttons: 0, clickCount: 1 });
 }
 
 async function capture(name) {
   const result = await send("Page.captureScreenshot", { format: "png", fromSurface: true, captureBeyondViewport: false });
   await writeFile(resolve(outputDir, `${name}.png`), Buffer.from(result.data, "base64"));
+}
+
+async function enterRoundFromShop(viewport, round, prefix) {
+  await clickElement("#shopContinue");
+  const paddedRound = String(round).padStart(2, "0");
+  await waitFor(`(
+    document.querySelector("#ruleDraft")?.classList.contains("show")
+      && document.querySelector("#draftRoundValue")?.textContent === "${paddedRound}"
+  ) || (
+    document.querySelector("#phaseValue")?.textContent === "出牌中"
+      && document.querySelector("#roundValue")?.textContent?.startsWith("${round}/")
+  )`, 10000);
+  const drafted = await evaluate('document.querySelector("#ruleDraft")?.classList.contains("show")');
+  const result = { draft_visible: drafted, draft_count: 0 };
+  if (drafted) {
+    result.draft_count = await evaluate('document.querySelectorAll(".rule-card").length');
+    await capture(`${viewport.name}-${prefix}-draft`);
+    await clickElement(".rule-card");
+  }
+  await waitFor(`document.querySelector("#phaseValue")?.textContent === "出牌中" && document.querySelector("#roundValue")?.textContent?.startsWith("${round}/")`, 10000);
+  return result;
 }
 
 await mkdir(outputDir, { recursive: true });
@@ -157,6 +180,19 @@ for (const viewport of [
     body_width: document.body.scrollWidth,
     viewport_width: document.documentElement.clientWidth
   })`);
+  const postpone = await evaluate(`(() => ({
+    before_uuid: document.querySelector(".game-card.is-active")?.dataset.cardUuid,
+    before_remaining: document.querySelector("#remainingValue")?.textContent,
+  }))()`);
+  if (viewport.mobile) await swipeElement(".game-card.is-active", "postpone");
+  else await clickElement("#postponeButton");
+  await wait(240);
+  Object.assign(postpone, await evaluate(`(() => ({
+    after_uuid: document.querySelector(".game-card.is-active")?.dataset.cardUuid,
+    after_remaining: document.querySelector("#remainingValue")?.textContent,
+    button_label: document.querySelector("#postponeButton")?.textContent?.replace(/\s+/g, " ").trim(),
+  }))()`));
+  await capture(`${viewport.name}-postpone`);
   const visuals = await evaluate(`(() => {
     const centerOffset = (selector) => {
       const button = document.querySelector(selector);
@@ -186,6 +222,10 @@ for (const viewport of [
       eat_layout: styleOf("#eatButton"),
       discard_layout: styleOf("#discardButton"),
       sound_layout: styleOf("#soundButton"),
+      point_font_size: Number.parseFloat(getComputedStyle(document.querySelector(".card-point-value")).fontSize),
+      point_value_count: document.querySelectorAll(".game-card.is-active .card-point-value").length,
+      point_base_color: getComputedStyle(document.querySelector(".card-point-wrap.point-base .card-point-value")).color,
+      point_panel_background: getComputedStyle(document.querySelector(".card-scores")).backgroundColor,
     };
   })()`);
   const deckViewer = {};
@@ -248,24 +288,53 @@ for (const viewport of [
   await clickElement("#itemStatusClose");
   await waitFor('!document.querySelector("#itemStatus")?.classList.contains("show")');
   let actions = 0;
+  let modifiedPointsObserved = false;
+  let fruitComboObserved = false;
+  let effectToastObserved = false;
   while (actions < 30) {
     const screen = await evaluate(`(() => {
       if (document.querySelector("#roundSummary")?.classList.contains("show")) return { summary: true };
       const card = document.querySelector(".game-card.is-active");
-      return card ? { summary: false, edible: card.classList.contains("card-edible") } : null;
+      return card ? {
+        summary: false,
+        edible: card.classList.contains("card-edible"),
+        card_id: card.querySelector(".card-code")?.textContent,
+        modified_points: card.querySelectorAll(".point-increased, .point-decreased").length,
+        fruit_combo_visible: Boolean(document.querySelector(".fruit-combo-flash")) || Number(document.querySelector(".deck-stage")?.dataset.lastFruitCombo ?? 0) > 0,
+        effect_toast_visible: Boolean(document.querySelector("#effectFeed .effect-flash")) || Boolean(document.querySelector(".deck-stage")?.dataset.lastEffectMessage),
+      } : null;
     })()`);
     if (!screen || screen.summary) break;
-    if (viewport.mobile) await swipeElement(".game-card.is-active", screen.edible ? "eat" : "discard");
-    else await clickElement(screen.edible ? "#eatButton" : "#discardButton");
+    modifiedPointsObserved ||= screen.modified_points > 0;
+    fruitComboObserved ||= screen.fruit_combo_visible;
+    effectToastObserved ||= screen.effect_toast_visible;
+    const action = screen.card_id === "D001" ? "discard" : screen.edible ? "eat" : "discard";
+    if (viewport.mobile) await swipeElement(".game-card.is-active", action);
+    else await clickElement(action === "eat" ? "#eatButton" : "#discardButton");
     actions += 1;
-    await wait(230);
+    await wait(80);
+    const feedback = await evaluate(`({
+      fruit_combo_visible: Boolean(document.querySelector(".fruit-combo-flash")) || Number(document.querySelector(".deck-stage")?.dataset.lastFruitCombo ?? 0) > 0,
+      effect_toast_visible: Boolean(document.querySelector("#effectFeed .effect-flash")) || Boolean(document.querySelector(".deck-stage")?.dataset.lastEffectMessage)
+    })`);
+    fruitComboObserved ||= feedback.fruit_combo_visible;
+    effectToastObserved ||= feedback.effect_toast_visible;
+    await wait(150);
   }
   await wait(300);
+  if (!modifiedPointsObserved) {
+    await evaluate('document.querySelector("#deckInfoButton")?.click()');
+    await wait(80);
+    modifiedPointsObserved = await evaluate('document.querySelectorAll("#deckStatusList .point-increased, #deckStatusList .point-decreased").length > 0');
+    await evaluate('document.querySelector("#deckStatusClose")?.click()');
+    await wait(50);
+  }
   await capture(`${viewport.name}-summary`);
   const roundComplete = await evaluate(`({
     summary_visible: document.querySelector("#roundSummary")?.classList.contains("show"),
     gold: Number(document.querySelector("#goldValue")?.textContent),
-    remaining: Number.parseInt(document.querySelector("#remainingValue")?.textContent ?? "0", 10)
+    remaining: Number.parseInt(document.querySelector("#remainingValue")?.textContent ?? "0", 10),
+    contract_result: document.querySelector("#summaryRuleResults")?.textContent?.replace(/\\s+/g, " ").trim()
   })`);
   if (roundComplete.summary_visible) {
     await evaluate('document.querySelector("#roundSummary")?.classList.remove("show")');
@@ -309,6 +378,9 @@ for (const viewport of [
   const shopState = await evaluate(`({
     shop_visible: document.querySelector("#shopPanel")?.classList.contains("show"),
     offer_count: document.querySelectorAll(".shop-card").length,
+    random_offer_count: document.querySelectorAll("#shopOfferList .shop-card").length,
+    themed_offer_count: document.querySelectorAll("#shopThemeOfferList .shop-card").length,
+    themed_types: [...document.querySelectorAll("#shopThemeOfferList .shop-card-copy > small:first-child")].map((node) => node.textContent.split(" · ")[1]),
     item_offer_count: document.querySelectorAll(".shop-item-card").length,
     plate_summary: document.querySelector("#shopPlateSummary")?.textContent?.replace(/\\s+/g, " ").trim(),
     plate_upgrade_label: document.querySelector("#shopPlateUpgrade")?.textContent,
@@ -346,12 +418,9 @@ for (const viewport of [
   const secondRound = { second_round_attempted: false };
   if (shopState.shop_visible) {
     secondRound.second_round_attempted = true;
-    await clickElement("#shopContinue");
-    await waitFor('document.querySelector("#ruleDraft")?.classList.contains("show") && document.querySelector("#draftRoundValue")?.textContent === "02"');
-    secondRound.second_draft_count = await evaluate('document.querySelectorAll(".rule-card").length');
-    await capture(`${viewport.name}-round-2-draft`);
-    await clickElement(".rule-card");
-    await wait(2200);
+    const secondEntry = await enterRoundFromShop(viewport, 2, "round-2");
+    secondRound.second_draft_visible = secondEntry.draft_visible;
+    secondRound.second_draft_count = secondEntry.draft_count;
     secondRound.second_phase = await evaluate('document.querySelector("#phaseValue")?.textContent');
     secondRound.second_start_remaining = await evaluate('Number.parseInt(document.querySelector("#remainingValue")?.textContent ?? "0", 10)');
     await capture(`${viewport.name}-round-2-playing`);
@@ -378,29 +447,12 @@ for (const viewport of [
     if (secondRound.second_summary_visible) {
       await clickElement("#summaryContinueBtn");
       await waitFor('document.querySelector("#shopPanel")?.classList.contains("show")');
-      await clickElement("#shopContinue");
-      await waitFor('document.querySelector("#ruleDraft")?.classList.contains("show") && document.querySelector("#draftRoundValue")?.textContent === "03"');
-      secondRound.third_draft_visible = true;
-      secondRound.third_draft_count = await evaluate('document.querySelectorAll(".rule-card").length');
-      await capture(`${viewport.name}-round-3-draft`);
-      await clickElement(".rule-card");
-      await waitFor('document.querySelector("#questDraft")?.classList.contains("show")');
-      await wait(180);
-      secondRound.quest_draft_count = await evaluate('document.querySelectorAll(".quest-card").length');
-      secondRound.quest_round = await evaluate('document.querySelector("#questRoundValue")?.textContent');
-      await capture(`${viewport.name}-round-3-quest`);
-      await clickElement(".quest-card");
-      await wait(2200);
+      const thirdEntry = await enterRoundFromShop(viewport, 3, "round-3");
+      secondRound.third_draft_visible = thirdEntry.draft_visible;
+      secondRound.third_draft_count = thirdEntry.draft_count;
       secondRound.third_phase = await evaluate('document.querySelector("#phaseValue")?.textContent');
       secondRound.third_start_remaining = await evaluate('Number.parseInt(document.querySelector("#remainingValue")?.textContent ?? "0", 10)');
-      secondRound.quest_info_enabled = await evaluate('!document.querySelector("#questInfoButton")?.disabled');
-      await clickElement("#questInfoButton");
-      await waitFor('document.querySelector("#questStatus")?.classList.contains("show")');
-      await wait(180);
-      secondRound.quest_status_text = await evaluate('document.querySelector("#questStatusContent")?.textContent?.replace(/\\s+/g, " ").trim()');
-      await capture(`${viewport.name}-round-3-quest-status`);
-      await clickElement("#questStatusClose");
-      await waitFor('!document.querySelector("#questStatus")?.classList.contains("show")');
+      secondRound.legacy_quest_disabled = await evaluate('document.querySelector("#questInfoButton")?.disabled && document.querySelector("#questInfoButton")?.hidden');
       await capture(`${viewport.name}-round-3-playing`);
       let thirdActions = 0;
       while (thirdActions < 30) {
@@ -418,7 +470,7 @@ for (const viewport of [
       await wait(300);
       secondRound.third_actions = thirdActions;
       secondRound.third_summary_visible = await evaluate('document.querySelector("#roundSummary")?.classList.contains("show")');
-      secondRound.third_quest_result = await evaluate('document.querySelector("#summaryQuestResult")?.textContent');
+      secondRound.third_contract_result = await evaluate('document.querySelector("#summaryRuleResults")?.textContent');
       secondRound.third_score_is_finite = await evaluate(`(() => {
         const text = document.querySelector("#scoreValue")?.textContent ?? "";
         return !/NaN|Infinity/.test(text);
@@ -436,6 +488,8 @@ for (const viewport of [
         secondRound.reroll_gold_after = await evaluate('Number(document.querySelector("#shopGold")?.textContent)');
         secondRound.reroll_label_after = await evaluate('document.querySelector("#shopReroll")?.textContent');
         secondRound.reroll_offer_count = await evaluate('document.querySelectorAll(".shop-card").length');
+        secondRound.reroll_random_count = await evaluate('document.querySelectorAll("#shopOfferList .shop-card").length');
+        secondRound.reroll_themed_count = await evaluate('document.querySelectorAll("#shopThemeOfferList .shop-card").length');
         secondRound.reroll_item_offer_count = await evaluate('document.querySelectorAll(".shop-item-card").length');
         secondRound.buy_after_reroll_gold_before = secondRound.reroll_gold_after;
         secondRound.buy_after_reroll_offer_before = secondRound.reroll_offer_count;
@@ -448,20 +502,20 @@ for (const viewport of [
         secondRound.buy_after_reroll_prices = affordableCard.prices;
         secondRound.buy_after_reroll_affordable_index = affordableCard.index;
         if (affordableCard.index >= 0) {
-          await clickElement(`.shop-card:nth-child(${affordableCard.index + 1})`);
+          await evaluate(`document.querySelectorAll(".shop-card")[${affordableCard.index}]?.click()`);
           await wait(180);
         }
         secondRound.buy_after_reroll_gold_after = await evaluate('Number(document.querySelector("#shopGold")?.textContent)');
         secondRound.buy_after_reroll_offer_after = await evaluate('document.querySelectorAll(".shop-card").length');
         secondRound.buy_after_reroll_message = await evaluate('document.querySelector("#shopMessage")?.textContent');
         await capture(`${viewport.name}-round-3-shop-rerolled`);
-        await clickElement("#shopContinue");
-        await waitFor('document.querySelector("#ruleDraft")?.classList.contains("show") && document.querySelector("#draftRoundValue")?.textContent === "04"');
-        secondRound.fourth_draft_visible = true;
+        const fourthEntry = await enterRoundFromShop(viewport, 4, "round-4");
+        secondRound.fourth_round_started = true;
+        secondRound.fourth_draft_visible = fourthEntry.draft_visible;
       }
     }
   }
-  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, audio_overflow_safe: audioOverflowSafe, ...onboarding, ...draftGoal, ...state, ...visuals, ...deckViewer, ...collections, actions, ...roundComplete, ...deleteConfirmation, ...shopState, ...secondRound });
+  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, audio_overflow_safe: audioOverflowSafe, ...onboarding, ...draftGoal, ...state, ...postpone, ...visuals, ...deckViewer, ...collections, actions, modified_points_observed: modifiedPointsObserved, fruit_combo_observed: fruitComboObserved, effect_toast_observed: effectToastObserved, ...roundComplete, ...deleteConfirmation, ...shopState, ...secondRound });
 }
 
 socket.close();
@@ -469,14 +523,19 @@ const failures = [];
 for (const report of reports) {
   const fail = (condition, message) => { if (!condition) failures.push(`${report.viewport}: ${message}`); };
   fail(report.draft_count === 3, "规则三选一数量异常");
-  fail(report.objective_text?.includes("120 / 750 / 4000"), "欢迎页未明确显示三阶段目标");
+  fail(report.objective_text?.includes("200 / 700 / 1500"), "欢迎页未明确显示三阶段目标");
   fail(report.loop_step_count === 3, "欢迎页缺少三步流程");
   fail(report.welcome_horizontal_overflow === false, "欢迎页横向溢出");
-  fail(report.target?.includes("120"), "规则页未显示下一阶段目标");
+  fail(report.target?.includes("200"), "合约页未显示下一阶段目标");
   fail(report.progress?.includes("还差") && report.progress?.includes("剩余"), "规则页缺少目标差值或剩余轮次");
-  fail(report.help?.includes("规则怎么用"), "规则页缺少简要说明");
+  fail(report.help?.includes("永久限时经济"), "合约页缺少限时经济说明");
   fail(report.tiers?.length === 3, "规则卡缺少分层标签");
   fail(report.body_width <= report.viewport_width, "游戏页面横向溢出");
+  fail(report.before_uuid !== report.after_uuid && report.before_remaining === report.after_remaining, "后置没有在不消耗餐盘牌的情况下更换当前牌");
+  fail(report.button_label?.includes("后置"), "缺少后置操作按钮");
+  fail(report.point_value_count === 2 && report.point_font_size >= 24 && report.point_font_size <= 36, "卡牌吃弃点数尺寸没有收敛到清晰但克制的范围");
+  fail(report.point_base_color === "rgb(255, 248, 232)", "未变化的基础点数不是中性白色");
+  fail(report.point_panel_background === "rgb(185, 161, 132)", "点数面板没有使用贴合牌面的暖色底");
   fail(report.plate_background?.includes("radial-gradient") && report.plate_radius === "50%", "餐盘未渲染为白色圆盘");
   fail(!report.card_art_background?.includes("radial-gradient"), "卡牌卡图仍然绘制餐盘背景");
   fail(report.empty_plate_visible === true, "吃完牌后没有留下可见餐盘");
@@ -490,7 +549,12 @@ for (const report of reports) {
   fail(report.card_count > 0 && report.effect_count === report.card_count, "牌组面板没有完整显示卡牌效果");
   fail(report.capacity_cell_count === 4, "牌组面板缺少餐盘容量信息");
   fail(report.summary_visible === true, "第一轮未正常结算");
-  fail(report.shop_visible === true && report.offer_count === 3 && report.item_offer_count === 3, "商店商品数量异常");
+  fail(report.actions === 7, "初始七张教学牌没有恰好处理 7 张");
+  fail(report.modified_points_observed === true, "永久点数变化没有在卡牌上显示红绿状态");
+  fail(report.fruit_combo_observed === true, "水果连击没有显示独立特效");
+  fail(report.effect_toast_observed === true, "卡牌效果没有显示侧边特效通知");
+  fail(report.shop_visible === true && report.random_offer_count === 3 && report.themed_offer_count === 3 && report.item_offer_count === 2, "商店随机、同类或道具货架数量异常");
+  fail(new Set(report.themed_types ?? []).size === 1, "同类专柜出现了不同类别卡牌");
   fail(report.shop_panel_inside_viewport === true, "缩小后的商店仍横向溢出");
   fail(report.viewport !== "desktop" || report.shop_panel_width <= 830, "桌面商店宽度未缩小");
   fail(report.loaded_item_sprite_sheets?.every((image) => image.includes("shop-items-atlas-v013.webp")), "商店道具未加载新版独立图集");
@@ -501,14 +565,18 @@ for (const report of reports) {
   fail(report.deck_after_accept === report.deck_before - 1, "确认删牌后牌组未恰好减少一张");
   fail(report.message_after_accept?.includes("删除"), "确认删牌后缺少交易反馈");
   fail(report.second_summary_visible === true && report.third_summary_visible === true, "未完成前三轮结算");
-  fail(report.quest_draft_count === 3 && report.quest_info_enabled === true, "第 3 轮任务流程异常");
-  fail(report.reroll_offer_count === 3 && report.reroll_item_offer_count === 3, "第 3 轮刷新未补齐商品");
+  fail(report.legacy_quest_disabled === true, "旧危险任务流程仍在第 3 轮出现");
+  fail(report.reroll_random_count === 3 && report.reroll_themed_count === 3 && report.reroll_item_offer_count === 2, "第 3 轮刷新未补齐双卡牌货架与道具");
   fail(
     report.buy_after_reroll_affordable_index < 0
       || report.buy_after_reroll_offer_after === report.buy_after_reroll_offer_before - 1,
     "金币充足时刷新后购买未正常完成",
   );
-  fail(report.fourth_draft_visible === true, "未连续推进到第 4 轮");
+  fail(
+    !report.contract_result?.includes("未完成") || report.second_draft_visible === false,
+    "未完成合约没有跨轮保留，第二轮仍错误要求重新选约",
+  );
+  fail(report.fourth_round_started === true, "未连续推进到第 4 轮");
 }
 if (browserErrors.length > 0) failures.push(`浏览器控制台错误：${browserErrors.join(" | ")}`);
 const finalReport = { reports, browser_errors: browserErrors, failures };

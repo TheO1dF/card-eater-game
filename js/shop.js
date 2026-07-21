@@ -35,25 +35,59 @@ export function createShopService(options = {}) {
 
   function repriceShopCards(state, cards) {
     const { discount } = getCardPriceModifiers(state);
-    return cards.map((card) => ({
-      ...card,
-      shop_base_price: getRarityPrice(card.rarity),
-      shop_discount: discount,
-      shop_price: Math.max(1, getRarityPrice(card.rarity) - discount),
-    }));
+    return cards.map((card) => {
+      const basePrice = Math.max(1, getRarityPrice(card.rarity) + (card.shop_price_adjustment ?? 0));
+      return {
+        ...card,
+        shop_base_price: basePrice,
+        shop_discount: discount,
+        shop_price: Math.max(1, basePrice - discount),
+      };
+    });
   }
 
-  function getShopCards(state) {
-    const pool = createShopCardPool().filter((card) => {
+  function getEligibleCardPool(state) {
+    return createShopCardPool().filter((card) => {
       if ((card.min_shop_round ?? 1) > state.current_round) return false;
       if (!card.max_copies) return true;
       return state.deck.filter((owned) => owned.id === card.id).length < card.max_copies;
     });
+  }
+
+  function getShopCards(state) {
+    const pool = getEligibleCardPool(state);
     const offers = [];
     while (offers.length < GAME_CONFIG.shop_offer_count && pool.length > 0) {
       offers.push(takeWeighted(pool, state.current_round, random));
     }
     return repriceShopCards(state, offers);
+  }
+
+  function getThemedShopCards(state) {
+    const pool = getEligibleCardPool(state);
+    const groups = [...new Set(pool.map((card) => card.type))]
+      .map((type) => ({
+        type,
+        cards: pool.filter((card) => card.type === type),
+        weight: 1 + state.deck.filter((owned) => owned.type === type).length,
+      }))
+      .filter((group) => group.cards.length >= GAME_CONFIG.shop_offer_count);
+    if (groups.length === 0) return { type: null, cards: [] };
+    let roll = random() * groups.reduce((sum, group) => sum + group.weight, 0);
+    let selected = groups.at(-1);
+    for (const group of groups) {
+      roll -= group.weight;
+      if (roll < 0) {
+        selected = group;
+        break;
+      }
+    }
+    const candidates = [...selected.cards];
+    const cards = [];
+    while (cards.length < GAME_CONFIG.shop_offer_count && candidates.length > 0) {
+      cards.push(takeWeighted(candidates, state.current_round, random));
+    }
+    return { type: selected.type, cards: repriceShopCards(state, cards) };
   }
 
   function getShopItems(state) {
@@ -136,7 +170,16 @@ export function createShopService(options = {}) {
     if (free) state.round.shop_free_rerolls = Math.max(0, state.round.shop_free_rerolls - 1);
     else state.gold = safeAdd(state.gold, -cost);
     state.round.shop_reroll_count = safePositiveInteger(state.round.shop_reroll_count + 1, 1000);
-    return { success: true, cost, cards: getShopCards(state), items: getShopItems(state), free };
+    const themed = getThemedShopCards(state);
+    return {
+      success: true,
+      cost,
+      cards: getShopCards(state),
+      themed_cards: themed.cards,
+      theme_type: themed.type,
+      items: getShopItems(state),
+      free,
+    };
   }
 
   function getPlateUpgradeStatus(state) {
@@ -187,6 +230,7 @@ export function createShopService(options = {}) {
 
   return {
     getShopCards,
+    getThemedShopCards,
     repriceShopCards,
     getShopItems,
     getBuyCardStatus,
