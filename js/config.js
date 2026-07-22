@@ -5,9 +5,9 @@ export const GAME_CONFIG = Object.freeze({
   quest_interval: 3,
   last_quest_round: 0,
   milestone_targets: Object.freeze({
-    5: 200,
-    10: 700,
-    15: 1500,
+    5: 100,
+    10: 300,
+    15: 500,
   }),
   delete_cost_step: 3,
   shop_offer_count: 3,
