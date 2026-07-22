@@ -523,10 +523,10 @@ const failures = [];
 for (const report of reports) {
   const fail = (condition, message) => { if (!condition) failures.push(`${report.viewport}: ${message}`); };
   fail(report.draft_count === 3, "规则三选一数量异常");
-  fail(report.objective_text?.includes("200 / 700 / 1500"), "欢迎页未明确显示三阶段目标");
+  fail(report.objective_text?.includes("100 / 300 / 500"), "欢迎页未明确显示三阶段目标");
   fail(report.loop_step_count === 3, "欢迎页缺少三步流程");
   fail(report.welcome_horizontal_overflow === false, "欢迎页横向溢出");
-  fail(report.target?.includes("200"), "合约页未显示下一阶段目标");
+  fail(report.target?.includes("100"), "合约页未显示下一阶段目标");
   fail(report.progress?.includes("还差") && report.progress?.includes("剩余"), "规则页缺少目标差值或剩余轮次");
   fail(report.help?.includes("永久限时经济"), "合约页缺少限时经济说明");
   fail(report.tiers?.length === 3, "规则卡缺少分层标签");
