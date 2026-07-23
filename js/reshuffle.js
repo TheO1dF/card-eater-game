@@ -25,6 +25,10 @@ export function activateReshuffle(state, shuffle) {
   state.round.reshuffle_count += 1;
   state.round.draw_pile = shuffle([...state.round.draw_pile, ...status.replayable]);
   state.round.spent_pile = [];
+  state.round.nebula_unresolved_since ??= {};
+  state.round.draw_pile
+    .filter((card) => card.effect?.kind === "nebula_wager")
+    .forEach((card) => { state.round.nebula_unresolved_since[card.uuid] = state.round.actions.length; });
   return {
     success: true,
     replayed_count: status.replayable_count,

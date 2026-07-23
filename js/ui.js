@@ -1,4 +1,4 @@
-import { GAME_CONFIG, getNextMilestone } from "./config.js";
+import { GAME_CONFIG, getFinalRound, getNextMilestone } from "./config.js";
 import { getItemById } from "./items.js";
 import { formatScore } from "./numbers.js";
 import { getQuestRequirement, getQuestTarget } from "./quests.js";
@@ -16,7 +16,7 @@ const PHASE_LABELS = Object.freeze({
 const RARITY_CLASS = Object.freeze({ "普通": "common", "罕见": "uncommon", "稀有": "rare", "传奇": "legendary", "诅咒": "curse" });
 const EDIBILITY_LABEL = Object.freeze({ edible: "可食用", inedible: "不可食用" });
 const ROLE_LABEL = Object.freeze({ baseline: "基础", setup: "启动", payoff: "收割", sacrifice: "牺牲", engine: "成长引擎", economy: "经济" });
-const CARD_ART_VERSION = 11;
+const CARD_ART_VERSION = 14;
 const CARD_ATLAS_VERSION = 10;
 const cardArtCache = new Map();
 const freshArtClass = (card) => card.art_file?.includes("-v2.") ? " art-outlined" : "";
@@ -165,18 +165,18 @@ function questElement(entry, state, onChoose) {
   return button;
 }
 
-function cardElement(card, active, depth) {
+function cardElement(card, active, depth, fogged = false, postponed = false) {
   const article = document.createElement("article");
   const pointChanged = pointTone(card, "eat_points") !== "point-base" || pointTone(card, "discard_points") !== "point-base";
-  article.className = `game-card card-${card.edibility} rarity-${RARITY_CLASS[card.rarity] ?? "common"}${active ? " is-active" : ""}${pointChanged ? " has-point-change" : ""}${card.weakened ? " is-weakened" : ""}${freshArtClass(card)}`;
+  article.className = `game-card card-${card.edibility} rarity-${RARITY_CLASS[card.rarity] ?? "common"}${active ? " is-active" : ""}${fogged ? " is-fogged" : ""}${postponed ? " is-postponed" : ""}${pointChanged ? " has-point-change" : ""}${card.weakened ? " is-weakened" : ""}${freshArtClass(card)}`;
   article.style.setProperty("--depth", depth);
   article.style.zIndex = String(10 - depth);
   article.dataset.cardUuid = card.uuid;
-  article.setAttribute("aria-label", `${card.name}，吃牌 ${card.eat_points} 分，弃牌 ${card.discard_points} 分`);
+  article.setAttribute("aria-label", fogged ? "被星云遮蔽的未处理卡牌" : `${card.name}，吃牌 ${card.eat_points} 分，弃牌 ${card.discard_points} 分${postponed ? "，本轮已后置，不能再次后置" : ""}`);
   article.innerHTML = `
     <div class="card-noise" aria-hidden="true"></div>
     <div class="card-head"><span class="rarity-tag">${card.rarity}</span><span class="edibility-tag">${EDIBILITY_LABEL[card.edibility] ?? "特殊"}</span><span class="card-code">${card.id}</span></div>
-    <div class="card-art" aria-hidden="true"><span class="game-sprite" style="${spriteStyle(card)}"></span></div>
+    <div class="card-art" aria-hidden="true"><span class="game-sprite" style="${spriteStyle(card)}"></span>${postponed ? '<span class="card-postpone-mark"><b>↔</b> 已后置</span>' : ""}</div>
     <div class="card-title"><small>${EDIBILITY_LABEL[card.edibility] ?? "特殊"} · ${card.type} · ${ROLE_LABEL[card.role] ?? "特殊"}</small><strong>${card.name}</strong></div>
     <div class="card-scores"><span class="discard-score"><i><small>DISCARD</small>↑ 弃</i>${pointValue(card, "discard_points")}</span><span class="eat-score"><i><small>EAT</small>↓ 吃</i>${pointValue(card, "eat_points")}</span></div>
     <div class="card-effect${card.effect ? "" : " is-flavor"}">${cardEffectText(card)}</div>
@@ -282,7 +282,43 @@ export function createUI(root) {
     deckStatus: get("#deckStatus"), deckInfoButton: get("#deckInfoButton"),
     ruleStatus: get("#ruleStatus"), ruleInfoButton: get("#ruleInfoButton"),
     itemStatus: get("#itemStatus"), itemInfoButton: get("#itemInfoButton"),
+    storyGuide: get("#storyGuide"), tutorialInfoButton: get("#tutorialInfoButton"),
   };
+
+  let tutorialFocus = null;
+
+  function clearTutorialFocus() {
+    tutorialFocus?.classList.remove("tutorial-focus");
+    tutorialFocus = null;
+  }
+
+  function showStoryGuide(model = {}) {
+    if (!nodes.storyGuide) return;
+    clearTutorialFocus();
+    nodes.storyGuide.hidden = false;
+    nodes.storyGuide.dataset.step = model.step ?? "story";
+    nodes.storyGuide.dataset.placement = model.placement ?? "table";
+    setText(get("#storyGuideChapter"), model.chapter ?? "PROLOGUE · 会说话的牌");
+    setText(get("#storyGuideSpeaker"), model.speaker ?? "咔嚓");
+    setText(get("#storyGuideMessage"), model.message ?? "我会陪你完成这一轮。");
+    setText(get("#storyGuideObjective"), model.objective ?? "跟着高亮提示操作。");
+    const progress = get("#storyGuideProgress");
+    progress.innerHTML = (model.progress ?? [])
+      .map((entry) => `<span class="${entry.done ? "done" : ""}">${entry.done ? "✓" : "○"} ${entry.label}</span>`)
+      .join("");
+    const next = get("#storyGuideNext");
+    next.hidden = !model.can_continue;
+    next.textContent = model.continue_label ?? "继续";
+    if (model.target) {
+      tutorialFocus = get(model.target);
+      tutorialFocus?.classList.add("tutorial-focus");
+    }
+  }
+
+  function hideStoryGuide() {
+    clearTutorialFocus();
+    if (nodes.storyGuide) nodes.storyGuide.hidden = true;
+  }
 
   function closeDeleteConfirmation() {
     nodes.deleteConfirm?.classList.remove("show");
@@ -417,7 +453,7 @@ export function createUI(root) {
   }
 
   function renderHud(state) {
-    setText(nodes.round, `${state.current_round}/${GAME_CONFIG.total_rounds}`);
+    setText(nodes.round, `${state.current_round}/${getFinalRound(state.milestone_delays)}`);
     setText(nodes.score, formatScore(state.total_score));
     nodes.score.title = String(state.total_score);
     setText(nodes.gold, formatScore(state.gold));
@@ -430,7 +466,8 @@ export function createUI(root) {
     nodes.remaining.title = `${liveRound ? "本轮" : "下轮预计"}登场 ${budget} 张；永久牌组 ${state.deck.length} 张`;
     setText(nodes.phase, PHASE_LABELS[state.phase] ?? state.phase);
     setText(get("#shopGold"), formatScore(state.gold));
-    setText(get("#shopDeleteCost"), state.remove_card_cost);
+    const removeCardCost = (state.round.shop_free_removals ?? 0) > 0 ? 0 : state.remove_card_cost;
+    setText(get("#shopDeleteCost"), removeCardCost);
     setText(get("#reshuffleCount"), state.round.reshuffle_charges);
     if (nodes.questInfoButton) {
       nodes.questInfoButton.disabled = !state.active_quest && state.quest_history.length === 0;
@@ -467,12 +504,24 @@ export function createUI(root) {
     const postponeButton = get("#postponeButton");
     if (postponeButton) {
       const reshuffle = getReshuffleStatus(state);
-      postponeButton.disabled = state.phase !== "Playing" || state.round.draw_pile.length < 2;
-      postponeButton.title = "侧滑或点击：把当前牌移动到本次餐盘最后";
+      const currentCard = state.round.draw_pile.at(-1);
+      const alreadyPostponed = Boolean(currentCard && state.round.postponed_uuids?.includes(currentCard.uuid));
+      postponeButton.disabled = state.phase !== "Playing" || state.round.draw_pile.length < 2 || alreadyPostponed;
+      postponeButton.title = alreadyPostponed
+        ? "这张牌本轮已经后置过，不能再次后置"
+        : "侧滑或点击：把当前牌移动到牌堆最后；每轮每张牌限一次";
       const hint = get("#reshuffleHint");
-      setText(hint, reshuffle.charges > 0
-        ? `自动重洗 ${reshuffle.charges} 次 · 无需点击`
-        : `已后置 ${state.round.postpone_count ?? 0} 次 · 左右侧滑可预览下一张`);
+      const postponeEffectHint = (state.round.reverse_postpone_charges ?? 0) > 0
+        ? "送餐员蓄势：下次后置将末牌调到当前"
+        : (state.round.postpone_score_charges ?? 0) > 0
+          ? `理牌托盘：后置 +1（剩余 ${state.round.postpone_score_charges} 次）`
+          : null;
+      setText(hint, postponeEffectHint
+        ?? (alreadyPostponed
+          ? "当前牌已后置过 · 本轮不能再次后置"
+          : reshuffle.charges > 0
+            ? `自动重洗 ${reshuffle.charges} 次 · 后置标记不会清除`
+            : `本轮已后置 ${state.round.postpone_count ?? 0} 张 · 每张牌限一次`));
     }
     renderItems(state);
   }
@@ -494,23 +543,39 @@ export function createUI(root) {
 
   return {
     preloadCardArt: warmCardArt,
-    openWelcome(onStart, bestScore = null) {
+    openWelcome(onStart, onTutorial, bestScore = null, tutorialComplete = false) {
       setText(get("#welcomeBestScore"), bestScore ?? "--");
-      const button = get("#startGameButton");
-      button.onclick = () => {
+      const start = get("#startGameButton");
+      const tutorial = get("#tutorialStartButton");
+      const launch = (callback) => {
         nodes.welcome.classList.remove("show");
-        onStart();
+        callback();
       };
+      if (tutorialComplete) {
+        start.textContent = "开始游戏";
+        tutorial.textContent = "重玩故事教学";
+        start.onclick = () => launch(onStart);
+        tutorial.onclick = () => launch(onTutorial);
+      } else {
+        start.textContent = "开始故事教学";
+        tutorial.textContent = "跳过教学 · 直接开始";
+        start.onclick = () => launch(onTutorial);
+        tutorial.onclick = () => launch(onStart);
+      }
       nodes.welcome.classList.add("show");
     },
+    showStoryGuide,
+    hideStoryGuide,
     renderHud,
     renderTimer(milliseconds) { setText(nodes.timer, `${(milliseconds / 1000).toFixed(1)}s`); },
-    renderStack(cards, gesture) {
+    renderStack(cards, gesture, state = null) {
       nodes.stack.replaceChildren();
       const visible = cards.slice(-3);
       visible.forEach((card, index) => {
         const depth = visible.length - 1 - index;
-        nodes.stack.appendChild(cardElement(card, depth === 0, depth));
+        const postponed = Boolean(state.round.postponed_uuids?.includes(card.uuid));
+        const fogged = Boolean(state.round.hidden_postponed_uuids?.includes(card.uuid));
+        nodes.stack.appendChild(cardElement(card, depth === 0, depth, fogged, postponed));
       });
       const activeCard = cards.at(-1);
       const activeElement = nodes.stack.querySelector(".game-card.is-active");
@@ -527,6 +592,11 @@ export function createUI(root) {
       get("#deckStatusClose")?.addEventListener("click", () => nodes.deckStatus?.classList.remove("show"));
       get("#ruleStatusClose")?.addEventListener("click", () => nodes.ruleStatus?.classList.remove("show"));
       get("#itemStatusClose")?.addEventListener("click", () => nodes.itemStatus?.classList.remove("show"));
+    },
+    bindTutorial({ onSkip, onContinue, onReplay }) {
+      get("#storyGuideSkip")?.addEventListener("click", onSkip);
+      get("#storyGuideNext")?.addEventListener("click", onContinue);
+      nodes.tutorialInfoButton?.addEventListener("click", onReplay);
     },
     setSoundState(enabled) {
       const button = get("#soundButton");
@@ -621,7 +691,7 @@ export function createUI(root) {
       shell?.classList.add("shake");
     },
     openRuleDraft(options, state, onChoose) {
-      const milestone = getNextMilestone(state.current_round);
+      const milestone = getNextMilestone(state.current_round, state.milestone_delays);
       const scoreNeeded = Math.max(0, milestone.target - state.total_score);
       const roundsRemaining = Math.max(1, milestone.round - state.current_round + 1);
       const progress = milestone.target > 0 ? Math.max(0, Math.min(100, state.total_score / milestone.target * 100)) : 100;
@@ -663,7 +733,7 @@ export function createUI(root) {
       const button = get("#summaryContinueBtn");
       const list = get("#summaryBreakdownList");
       const ruleResults = get("#summaryRuleResults");
-      const milestone = getNextMilestone(state.current_round);
+      const milestone = getNextMilestone(state.current_round, state.milestone_delays);
       const roundsRemaining = Math.max(0, milestone.round - state.current_round);
       const milestoneProgress = milestone.target > 0
         ? Math.max(0, Math.min(100, state.total_score / milestone.target * 100))
@@ -702,7 +772,7 @@ export function createUI(root) {
       } else if (outcome === "defeat") {
         eyebrow.textContent = "TARGET MISSED";
         title.textContent = "挑战失败";
-        tip.textContent = `本阶段需要 ${formatScore(getNextMilestone(state.current_round).target)} 分，当前为 ${formatScore(state.total_score)} 分。`;
+        tip.textContent = `本阶段需要 ${formatScore(getNextMilestone(state.current_round, state.milestone_delays).target)} 分，当前为 ${formatScore(state.total_score)} 分。`;
         button.textContent = "重新开始";
         button.classList.add("danger-action");
       } else {
@@ -731,6 +801,7 @@ export function createUI(root) {
     hideRoundSummary() { nodes.summary.classList.remove("show"); },
     openShop(state, cards, themedCards, themeType, itemOffers, onBuy, onBuyItem, onRemove, onPlateUpgrade, onReroll, onContinue, plateUpgradeStatus) {
       renderHud(state);
+      const removeCardCost = (state.round.shop_free_removals ?? 0) > 0 ? 0 : state.remove_card_cost;
       const plate = getPlateSummary(state.deck.length, state.plate_capacity);
       get("#shopPlateSummary").innerHTML = `
         <span><b>${state.deck.length} 张牌</b> · 永久餐盘 <b>${state.plate_capacity}</b> 张 · 下轮登场 ${plate.action_budget} 张</span>
@@ -745,8 +816,8 @@ export function createUI(root) {
       if (itemOffers.length === 0) nodes.shopItems.innerHTML = '<p class="empty-shop">本局低级道具已售罄</p>';
       nodes.shopDeck.replaceChildren(...state.deck.map((card) => deckChipElement(
         card,
-        state.remove_card_cost,
-        () => openDeleteConfirmation(card, state.remove_card_cost, onRemove),
+        removeCardCost,
+        () => openDeleteConfirmation(card, removeCardCost, onRemove),
       )));
       const plateUpgradeButton = get("#shopPlateUpgrade");
       const plateUpgradeDetail = get("#shopPlateUpgradeDetail");

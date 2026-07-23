@@ -4,7 +4,19 @@ import { resolve } from "node:path";
 const debugPort = Number(process.argv[2] ?? 9223);
 const gameUrl = process.argv[3] ?? "http://127.0.0.1:8765";
 const outputDir = resolve(process.argv[4] ?? ".artifacts/smoke");
+const viewportFilter = process.argv[5] ?? "all";
 const wait = (milliseconds) => new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
+
+const VIEWPORTS = [
+  { name: "mobile", width: 390, height: 844, mobile: true },
+  { name: "desktop", width: 1280, height: 800, mobile: false },
+];
+const selectedViewports = viewportFilter === "all"
+  ? VIEWPORTS
+  : VIEWPORTS.filter((viewport) => viewport.name === viewportFilter);
+if (selectedViewports.length === 0) {
+  throw new Error(`Unknown viewport filter: ${viewportFilter}. Use mobile, desktop, or all.`);
+}
 
 const targets = await fetch(`http://127.0.0.1:${debugPort}/json/list`).then((response) => response.json());
 const target = targets.find((item) => item.type === "page");
@@ -119,10 +131,7 @@ await send("Runtime.enable");
 await send("Log.enable");
 
 const reports = [];
-for (const viewport of [
-  { name: "mobile", width: 390, height: 844, mobile: true },
-  { name: "desktop", width: 1280, height: 800, mobile: false },
-]) {
+for (const viewport of selectedViewports) {
   await send("Emulation.setDeviceMetricsOverride", {
     width: viewport.width,
     height: viewport.height,
@@ -133,6 +142,22 @@ for (const viewport of [
   });
   await send("Page.navigate", { url: `${gameUrl}?smoke=${viewport.name}-${Date.now()}` });
   await waitFor('document.readyState === "complete" && typeof document.querySelector("#startGameButton")?.onclick === "function"');
+  const cardArtAudit = await evaluate(`(async () => {
+    const { createShopCardPool } = await import("./js/data.js");
+    const cards = createShopCardPool();
+    const results = await Promise.all(cards.map((card) => new Promise((resolveImage) => {
+      const image = new Image();
+      image.onload = () => resolveImage({ id: card.id, ok: image.naturalWidth > 0 && image.naturalWidth === image.naturalHeight });
+      image.onerror = () => resolveImage({ id: card.id, ok: false });
+      image.src = new URL("./assets/" + card.art_file, location.href).href;
+    })));
+    return {
+      total: cards.length,
+      v017: cards.filter((card) => card.art_file.startsWith("cards/v017/")).length,
+      legacy: cards.filter((card) => card.art_file.startsWith("cards/legacy-v016/")).length,
+      failed_ids: results.filter((result) => !result.ok).map((result) => result.id),
+    };
+  })()`);
   if (viewport.mobile) {
     // Reproduce iOS/weak-network behavior where decode() can remain pending.
     // Entering the shop and round two must never wait for decorative art.
@@ -149,12 +174,23 @@ for (const viewport of [
       loop_step_count: loop?.children.length ?? 0,
       welcome_horizontal_overflow: Boolean(rect && (rect.left < -1 || rect.right > innerWidth + 1)),
       start_button_visible: Boolean(document.querySelector("#startGameButton")?.getBoundingClientRect().height),
+      tutorial_choice_visible: Boolean(document.querySelector("#tutorialStartButton")?.getBoundingClientRect().height),
     };
   })()`);
   await clickElement("#startGameButton");
   await waitFor('document.querySelectorAll(".rule-card").length > 0');
   await wait(180);
   await capture(`${viewport.name}-draft`);
+  const tutorialDraft = await evaluate(`(() => {
+    const guide = document.querySelector("#storyGuide");
+    const rect = guide?.getBoundingClientRect();
+    return {
+      tutorial_draft_visible: Boolean(guide && !guide.hidden && rect?.width && rect?.height),
+      tutorial_draft_step: guide?.dataset.step,
+      tutorial_speaker: document.querySelector("#storyGuideSpeaker")?.textContent,
+      tutorial_draft_inside_viewport: Boolean(rect && rect.left >= -1 && rect.right <= innerWidth + 1 && rect.top >= -1 && rect.bottom <= innerHeight + 1),
+    };
+  })()`);
   const draftCount = await evaluate('document.querySelectorAll(".rule-card").length');
   const draftGoal = await evaluate(`(() => ({
     target: document.querySelector("#draftTargetText")?.textContent,
@@ -173,6 +209,21 @@ for (const viewport of [
   await clickElement(".rule-card");
   await wait(2200);
   await capture(`${viewport.name}-playing`);
+  const tutorialPlaying = await evaluate(`(() => {
+    const guide = document.querySelector("#storyGuide");
+    const rect = guide?.getBoundingClientRect();
+    const card = document.querySelector(".game-card.is-active")?.getBoundingClientRect();
+    return {
+      tutorial_playing_visible: Boolean(guide && !guide.hidden && rect?.width && rect?.height),
+      tutorial_playing_step: guide?.dataset.step,
+      tutorial_playing_inside_viewport: Boolean(rect && rect.left >= -1 && rect.right <= innerWidth + 1 && rect.top >= -1 && rect.bottom <= innerHeight + 1),
+      tutorial_overlaps_card: Boolean(rect && card
+        && rect.left < card.right - 1
+        && rect.right > card.left + 1
+        && rect.top < card.bottom - 1
+        && rect.bottom > card.top + 1),
+    };
+  })()`);
   const state = await evaluate(`({
     phase: document.querySelector("#phaseValue")?.textContent,
     cards: document.querySelectorAll(".game-card").length,
@@ -213,6 +264,9 @@ for (const viewport of [
     const art = document.querySelector(".game-card.is-active .card-art");
     const shadowStyle = shadow ? getComputedStyle(shadow) : null;
     const artStyle = art ? getComputedStyle(art) : null;
+    const sprite = document.querySelector(".game-card.is-active .card-art .game-sprite");
+    const spriteRect = sprite?.getBoundingClientRect();
+    const artRect = art?.getBoundingClientRect();
     return {
       plate_background: shadowStyle?.backgroundImage,
       plate_radius: shadowStyle?.borderRadius,
@@ -226,6 +280,14 @@ for (const viewport of [
       point_value_count: document.querySelectorAll(".game-card.is-active .card-point-value").length,
       point_base_color: getComputedStyle(document.querySelector(".card-point-wrap.point-base .card-point-value")).color,
       point_panel_background: getComputedStyle(document.querySelector(".card-scores")).backgroundColor,
+      card_art_sprite_square: Boolean(spriteRect && Math.abs(spriteRect.width - spriteRect.height) <= 1),
+      card_art_sprite_inside: Boolean(spriteRect && artRect
+        && spriteRect.left >= artRect.left - 1
+        && spriteRect.right <= artRect.right + 1
+        && spriteRect.top >= artRect.top - 1
+        && spriteRect.bottom <= artRect.bottom + 1),
+      card_art_sprite_height: spriteRect?.height ?? 0,
+      card_art_height: artRect?.height ?? 0,
     };
   })()`);
   const deckViewer = {};
@@ -235,7 +297,7 @@ for (const viewport of [
     return Boolean(button && style?.display !== "none" && style?.visibility !== "hidden");
   })()`);
   deckViewer.topbar_buttons_overlap = await evaluate(`(() => {
-    const selectors = ["#deckInfoButton", "#ruleInfoButton", "#itemInfoButton", "#questInfoButton", "#soundButton", "#phaseValue"];
+    const selectors = ["#deckInfoButton", "#ruleInfoButton", "#itemInfoButton", "#tutorialInfoButton", "#questInfoButton", "#soundButton", "#phaseValue"];
     const rects = selectors.map((selector) => document.querySelector(selector)?.getBoundingClientRect()).filter((rect) => rect && rect.width > 0 && rect.height > 0);
     return rects.some((left, index) => rects.slice(index + 1).some((right) => !(
       left.right <= right.left || right.right <= left.left || left.bottom <= right.top || right.bottom <= left.top
@@ -291,14 +353,22 @@ for (const viewport of [
   let modifiedPointsObserved = false;
   let fruitComboObserved = false;
   let effectToastObserved = false;
+  let postponedCardReturned = false;
+  let postponedMarkVisible = false;
+  let postponedButtonDisabled = false;
+  let postponedHintVisible = false;
   while (actions < 30) {
     const screen = await evaluate(`(() => {
       if (document.querySelector("#roundSummary")?.classList.contains("show")) return { summary: true };
       const card = document.querySelector(".game-card.is-active");
       return card ? {
         summary: false,
+        uuid: card.dataset.cardUuid,
         edible: card.classList.contains("card-edible"),
         card_id: card.querySelector(".card-code")?.textContent,
+        postponed_mark_visible: Boolean(card.querySelector(".card-postpone-mark")),
+        postpone_button_disabled: Boolean(document.querySelector("#postponeButton")?.disabled),
+        postpone_hint: document.querySelector("#reshuffleHint")?.textContent?.replace(/\s+/g, " ").trim(),
         modified_points: card.querySelectorAll(".point-increased, .point-decreased").length,
         fruit_combo_visible: Boolean(document.querySelector(".fruit-combo-flash")) || Number(document.querySelector(".deck-stage")?.dataset.lastFruitCombo ?? 0) > 0,
         effect_toast_visible: Boolean(document.querySelector("#effectFeed .effect-flash")) || Boolean(document.querySelector(".deck-stage")?.dataset.lastEffectMessage),
@@ -308,6 +378,13 @@ for (const viewport of [
     modifiedPointsObserved ||= screen.modified_points > 0;
     fruitComboObserved ||= screen.fruit_combo_visible;
     effectToastObserved ||= screen.effect_toast_visible;
+    if (screen.uuid === postpone.before_uuid) {
+      postponedCardReturned = true;
+      postponedMarkVisible = screen.postponed_mark_visible;
+      postponedButtonDisabled = screen.postpone_button_disabled;
+      postponedHintVisible = screen.postpone_hint?.includes("不能再次后置") ?? false;
+      await capture(`${viewport.name}-postponed-card-return`);
+    }
     const action = screen.card_id === "D001" ? "discard" : screen.edible ? "eat" : "discard";
     if (viewport.mobile) await swipeElement(".game-card.is-active", action);
     else await clickElement(action === "eat" ? "#eatButton" : "#discardButton");
@@ -515,29 +592,42 @@ for (const viewport of [
       }
     }
   }
-  reports.push({ viewport: viewport.name, draft_count: draftCount, audio_before_rule: audioBeforeRule, audio_overflow_safe: audioOverflowSafe, ...onboarding, ...draftGoal, ...state, ...postpone, ...visuals, ...deckViewer, ...collections, actions, modified_points_observed: modifiedPointsObserved, fruit_combo_observed: fruitComboObserved, effect_toast_observed: effectToastObserved, ...roundComplete, ...deleteConfirmation, ...shopState, ...secondRound });
+  reports.push({ viewport: viewport.name, card_art_audit: cardArtAudit, draft_count: draftCount, audio_before_rule: audioBeforeRule, audio_overflow_safe: audioOverflowSafe, ...onboarding, ...tutorialDraft, ...draftGoal, ...state, ...tutorialPlaying, ...postpone, postponed_card_returned: postponedCardReturned, postponed_mark_visible: postponedMarkVisible, postponed_button_disabled: postponedButtonDisabled, postponed_hint_visible: postponedHintVisible, ...visuals, ...deckViewer, ...collections, actions, modified_points_observed: modifiedPointsObserved, fruit_combo_observed: fruitComboObserved, effect_toast_observed: effectToastObserved, ...roundComplete, ...deleteConfirmation, ...shopState, ...secondRound });
 }
 
 socket.close();
 const failures = [];
 for (const report of reports) {
   const fail = (condition, message) => { if (!condition) failures.push(`${report.viewport}: ${message}`); };
+  fail(report.card_art_audit?.total === 89, "卡图审计没有覆盖全部 89 张牌");
+  fail(report.card_art_audit?.v017 === 89 && report.card_art_audit?.legacy === 0, "新版卡图没有完整覆盖当前卡池");
+  fail(report.card_art_audit?.failed_ids?.length === 0, `存在无法加载或非方形卡图：${report.card_art_audit?.failed_ids?.join(", ")}`);
   fail(report.draft_count === 3, "规则三选一数量异常");
   fail(report.objective_text?.includes("100 / 300 / 500"), "欢迎页未明确显示三阶段目标");
   fail(report.loop_step_count === 3, "欢迎页缺少三步流程");
   fail(report.welcome_horizontal_overflow === false, "欢迎页横向溢出");
+  fail(report.start_button_visible === true && report.tutorial_choice_visible === true, "欢迎页没有提供故事教学与直接开始两个入口");
+  fail(report.tutorial_draft_visible === true && report.tutorial_draft_step === "contract" && report.tutorial_speaker === "咔嚓", "故事卡牌没有在首次合约选择时引导玩家");
+  fail(report.tutorial_draft_inside_viewport === true, "合约教学对话框超出视口");
   fail(report.target?.includes("100"), "合约页未显示下一阶段目标");
   fail(report.progress?.includes("还差") && report.progress?.includes("剩余"), "规则页缺少目标差值或剩余轮次");
   fail(report.help?.includes("永久限时经济"), "合约页缺少限时经济说明");
   fail(report.tiers?.length === 3, "规则卡缺少分层标签");
   fail(report.body_width <= report.viewport_width, "游戏页面横向溢出");
+  fail(report.tutorial_playing_visible === true && ["eat", "postpone"].includes(report.tutorial_playing_step), "故事卡牌没有进入真实吃牌教学");
+  fail(report.tutorial_playing_inside_viewport === true, "出牌教学对话框超出视口");
+  fail(report.tutorial_overlaps_card === false, "故事教学对话框遮挡当前卡牌");
   fail(report.before_uuid !== report.after_uuid && report.before_remaining === report.after_remaining, "后置没有在不消耗餐盘牌的情况下更换当前牌");
   fail(report.button_label?.includes("后置"), "缺少后置操作按钮");
+  fail(report.postponed_card_returned === true, "被后置的实体牌没有在本轮重新回到当前牌位");
+  fail(report.postponed_mark_visible === true, "被后置的实体牌重新出现时没有牌面标记");
+  fail(report.postponed_button_disabled === true && report.postponed_hint_visible === true, "同一实体牌仍可重复后置或缺少禁用说明");
   fail(report.point_value_count === 2 && report.point_font_size >= 24 && report.point_font_size <= 36, "卡牌吃弃点数尺寸没有收敛到清晰但克制的范围");
   fail(report.point_base_color === "rgb(255, 248, 232)", "未变化的基础点数不是中性白色");
   fail(report.point_panel_background === "rgb(185, 161, 132)", "点数面板没有使用贴合牌面的暖色底");
   fail(report.plate_background?.includes("radial-gradient") && report.plate_radius === "50%", "餐盘未渲染为白色圆盘");
   fail(!report.card_art_background?.includes("radial-gradient"), "卡牌卡图仍然绘制餐盘背景");
+  fail(report.card_art_sprite_square === true && report.card_art_sprite_inside === true && report.card_art_sprite_height > 40, "手机或桌面卡图没有完整等比收进插画框");
   fail(report.empty_plate_visible === true, "吃完牌后没有留下可见餐盘");
   fail((report.eat_center_offset ?? 99) <= 2 && (report.discard_center_offset ?? 99) <= 2, "吃弃按钮文字或符号未居中");
   fail(report.eat_layout?.align === "center" && report.eat_layout?.justify === "center", "吃牌按钮布局未居中");

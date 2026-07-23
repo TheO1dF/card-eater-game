@@ -29,12 +29,18 @@ export function isQuestRound(round) {
     && round % GAME_CONFIG.quest_interval === 0;
 }
 
-export function getNextMilestone(currentRound) {
+export function getNextMilestone(currentRound, delays = {}) {
   const rounds = Object.keys(GAME_CONFIG.milestone_targets)
     .map(Number)
     .sort((a, b) => a - b);
-  const round = rounds.find((item) => item >= currentRound);
-  return round
-    ? { round, target: GAME_CONFIG.milestone_targets[round] }
-    : { round: GAME_CONFIG.total_rounds, target: GAME_CONFIG.milestone_targets[GAME_CONFIG.total_rounds] };
+  const baseRound = rounds.find((item) => item + (delays?.[item] ?? 0) >= currentRound) ?? rounds.at(-1);
+  return {
+    base_round: baseRound,
+    round: baseRound + (delays?.[baseRound] ?? 0),
+    target: GAME_CONFIG.milestone_targets[baseRound],
+  };
+}
+
+export function getFinalRound(delays = {}) {
+  return GAME_CONFIG.total_rounds + (delays?.[GAME_CONFIG.total_rounds] ?? 0);
 }

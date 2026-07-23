@@ -16,6 +16,7 @@ export function takeRoundDrawPile(shuffledDeck, plateCapacity) {
     draw_pile: cards.slice(0, actionBudget),
     action_budget: actionBudget,
     reserve_count: reserve.length,
+    reserve_cards: reserve,
     reserve_type_counts: reserve.reduce((counts, card) => {
       counts[card.type] = (counts[card.type] ?? 0) + 1;
       return counts;
@@ -47,10 +48,42 @@ export function getPlateSummary(deckSize, plateCapacity) {
 export function postponeCurrentCard(state) {
   const pile = state?.round?.draw_pile;
   if (!Array.isArray(pile) || pile.length < 2) return { success: false, reason: "not_enough_cards" };
-  const card = pile.pop();
-  pile.unshift(card);
+  const card = pile.at(-1);
   state.round.postponed_uuids ??= [];
-  if (!state.round.postponed_uuids.includes(card.uuid)) state.round.postponed_uuids.push(card.uuid);
+  if (state.round.postponed_uuids.includes(card.uuid)) {
+    return { success: false, reason: "already_postponed", card };
+  }
+  state.round.postponed_uuids.push(card.uuid);
+
+  let direction = "back";
+  let revealedCard = null;
+  if ((state.round.reverse_postpone_charges ?? 0) > 0) {
+    pile.pop();
+    revealedCard = pile.shift();
+    pile.push(card, revealedCard);
+    state.round.reverse_postpone_charges -= 1;
+    state.round.postpone_effect_triggers = (state.round.postpone_effect_triggers ?? 0) + 1;
+    direction = "front";
+  } else {
+    pile.pop();
+    pile.unshift(card);
+  }
+
+  let scoreBonus = 0;
+  if ((state.round.postpone_score_charges ?? 0) > 0 && (state.round.postpone_score_awarded ?? 0) < 2) {
+    state.round.postpone_score_charges -= 1;
+    state.round.postpone_score_awarded = (state.round.postpone_score_awarded ?? 0) + 1;
+    state.round.postpone_bonus_score = (state.round.postpone_bonus_score ?? 0) + 1;
+    state.round.postpone_effect_triggers = (state.round.postpone_effect_triggers ?? 0) + 1;
+    scoreBonus = 1;
+  }
   state.round.postpone_count = (state.round.postpone_count ?? 0) + 1;
-  return { success: true, card, remaining: pile.length };
+  return {
+    success: true,
+    card,
+    remaining: pile.length,
+    direction,
+    revealed_card: revealedCard,
+    score_bonus: scoreBonus,
+  };
 }

@@ -1,4 +1,5 @@
 const RECORD_KEY = "cardeater.run-history.v1";
+const TUTORIAL_KEY = "cardeater.story-tutorial.v1";
 
 function makeId(card, index = 0) {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -22,6 +23,15 @@ function saveRecord(record) {
   return records;
 }
 
+function loadTutorialComplete() {
+  try { return localStorage.getItem(TUTORIAL_KEY) === "complete"; } catch { return false; }
+}
+
+function saveTutorialComplete() {
+  try { localStorage.setItem(TUTORIAL_KEY, "complete"); } catch { /* Storage may be disabled. */ }
+  return true;
+}
+
 export const browserPlatform = Object.freeze({
   now: () => Date.now(),
   random: () => Math.random(),
@@ -29,5 +39,6 @@ export const browserPlatform = Object.freeze({
   vibrate: (pattern = 8) => globalThis.navigator?.vibrate?.(pattern),
   load_records: loadRecords,
   save_record: saveRecord,
+  load_tutorial_complete: loadTutorialComplete,
+  save_tutorial_complete: saveTutorialComplete,
 });
-

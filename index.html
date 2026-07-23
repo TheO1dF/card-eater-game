@@ -7,15 +7,15 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <title>吃牌肉鸽 · CardEater</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-    <link rel="preload" href="./assets/cards/f001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/f002.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/k001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/d001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/b005.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/c001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/a001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="./assets/cards/u001.webp?v=8" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="stylesheet" href="./styles.css?v=15" />
+    <link rel="preload" href="./assets/cards/v017/f001-v3.png?v=14" as="image" type="image/png" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/v017/f002-v3.png?v=14" as="image" type="image/png" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/v017/k001-v3.png?v=14" as="image" type="image/png" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/v017/d001-v3.png?v=14" as="image" type="image/png" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/v017/b005-v3.png?v=14" as="image" type="image/png" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/v017/c001-v3.png?v=14" as="image" type="image/png" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/v017/a001-v3.png?v=14" as="image" type="image/png" fetchpriority="high" />
+    <link rel="preload" href="./assets/cards/v017/u001-v3.png?v=14" as="image" type="image/png" fetchpriority="high" />
+    <link rel="stylesheet" href="./styles.css?v=16" />
   </head>
   <body>
     <main class="app" id="app">
@@ -30,6 +30,7 @@
             <button class="icon-button deck-info-button" id="deckInfoButton" type="button" aria-label="随时查看牌组">组</button>
             <button class="icon-button rule-info-button" id="ruleInfoButton" type="button" aria-label="随时查看当前持续合约">约</button>
             <button class="icon-button item-info-button" id="itemInfoButton" type="button" aria-label="随时查看已选道具">具</button>
+            <button class="icon-button tutorial-info-button" id="tutorialInfoButton" type="button" aria-label="重玩故事教学">教</button>
             <button class="icon-button quest-info-button" id="questInfoButton" type="button" aria-label="旧危险任务已停用" disabled hidden>任</button>
             <button class="icon-button" id="soundButton" type="button" aria-label="切换声音" aria-pressed="true">♪</button>
           </div>
@@ -71,7 +72,7 @@
           <button class="action-button discard-button" id="discardButton" type="button"><kbd>↑</kbd><span>弃掉</span></button>
           <div class="control-center">
             <button class="reshuffle-button postpone-button" id="postponeButton" type="button"><span>↔ 后置</span></button>
-            <small id="reshuffleHint">左右侧滑可预览并后置当前牌</small>
+            <small id="reshuffleHint">暂时不处理就后置到牌堆最后 · 每轮每张牌限一次</small>
           </div>
           <button class="action-button eat-button" id="eatButton" type="button"><kbd>↓</kbd><span>吃掉</span></button>
         </footer>
@@ -97,7 +98,10 @@
               <span class="legend-inedible">↑ 不可食用 · 通常弃牌得分</span>
             </div>
             <div class="best-score">本机最佳 <strong id="welcomeBestScore">--</strong></div>
-            <button class="primary-button start-button" id="startGameButton" type="button">开始游戏</button>
+            <div class="welcome-actions">
+              <button class="primary-button start-button" id="startGameButton" type="button">开始故事教学</button>
+              <button class="secondary-button tutorial-start-button" id="tutorialStartButton" type="button">跳过教学 · 直接开始</button>
+            </div>
             <small>声音可在游戏内右上角随时开关</small>
           </section>
         </div>
@@ -105,6 +109,24 @@
         <div class="overlay countdown-overlay" id="countdownOverlay" role="status" aria-live="assertive">
           <div class="countdown-pixel" id="countdownText">3</div>
         </div>
+
+        <aside class="story-guide" id="storyGuide" role="status" aria-live="polite" aria-atomic="true" hidden>
+          <div class="story-card-avatar" aria-hidden="true">
+            <span class="game-sprite" style="--sprite-image:url('./assets/cards/v017/a001-v3.png?v=14');--sprite-x:50%;--sprite-y:50%;--sprite-size-x:100%;--sprite-size-y:100%;--sprite-scale:1;"></span>
+            <i>?</i>
+          </div>
+          <div class="story-dialog">
+            <small id="storyGuideChapter">PROLOGUE · 会说话的牌</small>
+            <strong id="storyGuideSpeaker">咔嚓</strong>
+            <p id="storyGuideMessage">别怕，我只是比别的牌更爱说话。</p>
+            <em id="storyGuideObjective">跟着提示完成真实操作。</em>
+            <div class="story-progress" id="storyGuideProgress" aria-label="教学进度"></div>
+            <div class="story-actions">
+              <button class="story-skip" id="storyGuideSkip" type="button">跳过教学</button>
+              <button class="story-next" id="storyGuideNext" type="button" hidden>完成教学</button>
+            </div>
+          </div>
+        </aside>
 
         <div class="overlay" id="ruleDraft" role="dialog" aria-modal="true" aria-labelledby="ruleDraftTitle">
           <section class="modal-panel draft-panel">
@@ -239,6 +261,6 @@
         </div>
       </section>
     </main>
-    <script type="module" src="./js/main.js?v=15"></script>
+    <script type="module" src="./js/main.js?v=16"></script>
   </body>
 </html>

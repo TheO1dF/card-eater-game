@@ -3,7 +3,11 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = resolve(fileURLToPath(new URL("../", import.meta.url)));
+const repositoryRoot = resolve(fileURLToPath(new URL("../", import.meta.url)));
+const root = process.argv[3] ? resolve(repositoryRoot, process.argv[3]) : repositoryRoot;
+if (root !== repositoryRoot && !root.startsWith(`${repositoryRoot}${sep}`)) {
+  throw new Error("Static root must stay inside the repository");
+}
 const port = Number(process.argv[2] ?? process.env.PORT ?? 8080);
 const contentTypes = {
   ".html": "text/html; charset=utf-8",

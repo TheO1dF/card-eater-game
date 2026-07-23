@@ -9,8 +9,8 @@ export const RARITY_PRICE = Object.freeze(Object.fromEntries(
   Object.entries(RARITY_MODEL).map(([rarity, model]) => [rarity, model.price]),
 ));
 
-function takeWeighted(pool, round, random) {
-  const weights = pool.map((card) => getShopWeight(card, round));
+function takeWeighted(pool, round, random, rareBonus = 0) {
+  const weights = pool.map((card) => getShopWeight(card, round) * (card.rarity === "稀有" ? 1 + rareBonus : 1));
   const total = weights.reduce((sum, weight) => sum + weight, 0);
   if (total <= 0) return pool.splice(0, 1)[0];
 
@@ -41,7 +41,7 @@ export function createShopService(options = {}) {
         ...card,
         shop_base_price: basePrice,
         shop_discount: discount,
-        shop_price: Math.max(1, basePrice - discount),
+        shop_price: card.forced_price ? Math.min(4, Math.max(1, basePrice - discount)) : Math.max(1, basePrice - discount),
       };
     });
   }
@@ -58,7 +58,7 @@ export function createShopService(options = {}) {
     const pool = getEligibleCardPool(state);
     const offers = [];
     while (offers.length < GAME_CONFIG.shop_offer_count && pool.length > 0) {
-      offers.push(takeWeighted(pool, state.current_round, random));
+      offers.push(takeWeighted(pool, state.current_round, random, state.rare_shop_weight_bonus ?? 0));
     }
     return repriceShopCards(state, offers);
   }
@@ -73,19 +73,22 @@ export function createShopService(options = {}) {
       }))
       .filter((group) => group.cards.length >= GAME_CONFIG.shop_offer_count);
     if (groups.length === 0) return { type: null, cards: [] };
-    let roll = random() * groups.reduce((sum, group) => sum + group.weight, 0);
-    let selected = groups.at(-1);
-    for (const group of groups) {
-      roll -= group.weight;
-      if (roll < 0) {
-        selected = group;
-        break;
+    let selected = groups.find((group) => group.type === state.round.forced_theme_type);
+    if (!selected) {
+      let roll = random() * groups.reduce((sum, group) => sum + group.weight, 0);
+      selected = groups.at(-1);
+      for (const group of groups) {
+        roll -= group.weight;
+        if (roll < 0) {
+          selected = group;
+          break;
+        }
       }
     }
     const candidates = [...selected.cards];
     const cards = [];
     while (cards.length < GAME_CONFIG.shop_offer_count && candidates.length > 0) {
-      cards.push(takeWeighted(candidates, state.current_round, random));
+      cards.push(takeWeighted(candidates, state.current_round, random, state.rare_shop_weight_bonus ?? 0));
     }
     return { type: selected.type, cards: repriceShopCards(state, cards) };
   }
@@ -121,7 +124,13 @@ export function createShopService(options = {}) {
     if (!status.ok) return false;
     const cleanCard = status.card;
     state.gold = safeAdd(state.gold, -card.shop_price);
-    state.deck.push({ ...cleanCard, uuid: createId(cleanCard, state.deck.length) });
+    const dormant = Boolean(state.round.next_purchase_dormant);
+    state.deck.push({
+      ...cleanCard,
+      uuid: createId(cleanCard, state.deck.length),
+      ...(dormant ? { dormant_until_round: state.current_round + 1, status_keywords: ["休眠"] } : {}),
+    });
+    if (dormant) state.round.next_purchase_dormant = false;
     let refund = 0;
     if (state.round.reserve_count > 0) {
       for (const entry of state.items.filter((owned) => owned.effect?.kind === "reserve_purchase_refund")) {
@@ -132,7 +141,7 @@ export function createShopService(options = {}) {
       }
     }
     state.gold = safeAdd(state.gold, refund);
-    state.last_shop_transaction = { kind: "buy_card", card_name: cleanCard.name, cost: card.shop_price, refund };
+    state.last_shop_transaction = { kind: "buy_card", card_name: cleanCard.name, cost: card.shop_price, refund, dormant };
     return true;
   }
 
@@ -170,6 +179,8 @@ export function createShopService(options = {}) {
     if (free) state.round.shop_free_rerolls = Math.max(0, state.round.shop_free_rerolls - 1);
     else state.gold = safeAdd(state.gold, -cost);
     state.round.shop_reroll_count = safePositiveInteger(state.round.shop_reroll_count + 1, 1000);
+    state.round.shop_force_price_four = false;
+    state.round.shop_force_price_four_applied = true;
     const themed = getThemedShopCards(state);
     return {
       success: true,
@@ -210,15 +221,18 @@ export function createShopService(options = {}) {
   }
 
   function removeCard(state, cardUuid) {
-    if (state.deck.length <= 1 || state.gold < state.remove_card_cost) return false;
+    const free = (state.round.shop_free_removals ?? 0) > 0;
+    const removalCost = free ? 0 : state.remove_card_cost;
+    if (state.deck.length <= 1 || state.gold < removalCost) return false;
     const index = state.deck.findIndex((card) => card.uuid === cardUuid);
     if (index < 0) return false;
 
     const removed = state.deck[index];
-    const cost = state.remove_card_cost;
+    const cost = removalCost;
     state.gold = safeAdd(state.gold, -cost);
     state.deck.splice(index, 1);
     state.remove_count += 1;
+    if (free) state.round.shop_free_removals = Math.max(0, state.round.shop_free_removals - 1);
     state.remove_card_cost = state.remove_count * GAME_CONFIG.delete_cost_step;
     state.last_shop_transaction = {
       kind: "remove",
@@ -226,6 +240,22 @@ export function createShopService(options = {}) {
       cost,
     };
     return true;
+  }
+
+  function applyOpeningPriceOverride(state, groups) {
+    if (!state.round.shop_force_price_four || state.round.shop_force_price_four_applied) return null;
+    const offers = groups.flat().filter(Boolean);
+    const target = offers.reduce((highest, offer) => !highest || offer.shop_price > highest.shop_price ? offer : highest, null);
+    state.round.shop_force_price_four_applied = true;
+    if (!target || target.shop_price <= 4) return null;
+    target.shop_price = 4;
+    target.shop_discount = Math.max(target.shop_discount ?? 0, (target.shop_base_price ?? 4) - 4);
+    target.forced_price = true;
+    return target;
+  }
+
+  function getRemoveCardCost(state) {
+    return (state.round.shop_free_removals ?? 0) > 0 ? 0 : state.remove_card_cost;
   }
 
   return {
@@ -238,6 +268,8 @@ export function createShopService(options = {}) {
     getBuyItemStatus,
     buyItem,
     removeCard,
+    getRemoveCardCost,
+    applyOpeningPriceOverride,
     getRerollCost,
     rerollShop,
     getPlateUpgradeStatus,

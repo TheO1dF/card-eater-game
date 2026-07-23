@@ -25,6 +25,12 @@ let actionLocked = true;
 let streak = { action: null, count: 0 };
 let soundEnabled = true;
 let bgmStarted = false;
+const tutorial = {
+  active: false,
+  correct_eat: false,
+  postponed: false,
+  correct_discard: false,
+};
 
 const shuffle = (items) => {
   const result = [...items];
@@ -44,8 +50,107 @@ function startSound() {
   }
 }
 
+function tutorialProgress() {
+  return [
+    { label: "正确吃牌", done: tutorial.correct_eat },
+    { label: "后置排牌", done: tutorial.postponed },
+    { label: "正确弃牌", done: tutorial.correct_discard },
+  ];
+}
+
+function renderTutorial() {
+  if (!tutorial.active) {
+    ui.hideStoryGuide();
+    return;
+  }
+  const progress = tutorialProgress();
+  if (state.phase === GAME_PHASES.RULE_DRAFT) {
+    ui.showStoryGuide({
+      step: "contract",
+      placement: "contract",
+      chapter: "CHAPTER 1 · 第一份合约",
+      message: "每次只持有一份合约。没完成不会受罚，它会留下来等你下轮再试。先选一份你看得懂的。",
+      objective: "点击任意一张合约卡继续。",
+      target: ".rule-card",
+      progress,
+    });
+    return;
+  }
+  if (state.phase !== GAME_PHASES.PLAYING) {
+    ui.hideStoryGuide();
+    return;
+  }
+
+  const card = state.round.draw_pile.at(-1);
+  if (!tutorial.correct_eat) {
+    const edible = card?.edibility === "edible";
+    ui.showStoryGuide({
+      step: "eat",
+      chapter: "CHAPTER 2 · 看食性，不看外表",
+      message: edible
+        ? `「${card.name}」标着可食用。下滑或点击“吃掉”，获得它的吃点，并取得这张实体牌本轮的基础金币。`
+        : `「${card?.name ?? "当前牌"}」不可食用。先别硬吃；把它后置到餐盘末尾，继续寻找可食用牌。`,
+      objective: edible ? "完成一次符合食性的吃牌。" : "点击“后置”，不结算地改变牌序。",
+      target: edible ? "#eatButton" : "#postponeButton",
+      progress,
+    });
+    return;
+  }
+
+  if (!tutorial.postponed) {
+    ui.showStoryGuide({
+      step: "postpone",
+      chapter: "CHAPTER 3 · 餐盘不是传送带",
+      message: "如果暂时不想处理这张牌，可以将它后置，它会到牌堆的最后一张。但是每轮每张牌只能后置一次哦。后置不会结算吃弃，也不消耗行动次数。",
+      objective: "点击“后置”或左右侧滑一次。",
+      target: "#postponeButton",
+      progress,
+    });
+    return;
+  }
+
+  if (!tutorial.correct_discard) {
+    const inedible = card?.edibility === "inedible";
+    ui.showStoryGuide({
+      step: "discard",
+      chapter: "CHAPTER 4 · 不能吃，就让它走",
+      message: inedible
+        ? `「${card.name}」不可食用。上滑或点击“弃掉”，使用它更高的弃点。`
+        : `「${card?.name ?? "当前牌"}」仍可食用。把它后置，找到一张不可食用牌再弃。`,
+      objective: inedible ? "完成一次符合食性的弃牌。" : "用后置保留好牌，寻找不可食用牌。",
+      target: inedible ? "#discardButton" : "#postponeButton",
+      progress,
+    });
+    return;
+  }
+
+  ui.showStoryGuide({
+    step: "complete",
+    chapter: "EPILOGUE · 牌序就是构筑",
+    message: "你已经会吃、弃和后置了。连续吃水果会不断提高水果连击；遇到非水果时，把它后置，就能尝试维持连击。",
+    objective: "真正的选择是：现在拿分，还是为后面的爆发重排餐盘。",
+    progress,
+    can_continue: true,
+    continue_label: "完成教学",
+  });
+}
+
+function startTutorial() {
+  tutorial.active = true;
+  tutorial.correct_eat = false;
+  tutorial.postponed = false;
+  tutorial.correct_discard = false;
+  renderTutorial();
+}
+
+function finishTutorial() {
+  tutorial.active = false;
+  browserPlatform.save_tutorial_complete();
+  ui.hideStoryGuide();
+}
+
 function refreshTable() {
-  ui.renderStack(state.round.draw_pile, gesture);
+  ui.renderStack(state.round.draw_pile, gesture, state);
   ui.renderHud(state);
 }
 
@@ -58,6 +163,7 @@ function updateStreak(action) {
 function completeRound() {
   actionLocked = true;
   transitionPhase(state, GAME_PHASES.SCORING, { round: state.current_round });
+  renderTutorial();
   state.round.elapsed_ms = Math.max(1, state.round.timer_frozen_elapsed_ms
     ?? (browserPlatform.now() - state.round.started_at_ms));
 
@@ -76,7 +182,7 @@ function completeRound() {
 
   const milestone = engine.levelProgressCheck(state);
   const failed = milestone.target > 0 && !milestone.passed;
-  const won = !failed && state.current_round === GAME_CONFIG.total_rounds;
+  const won = !failed && state.current_round >= engine.getFinalRound(state);
   const outcome = failed ? "defeat" : won ? "victory" : null;
 
   if (outcome) {
@@ -143,6 +249,7 @@ function resolveEmptyDrawPile() {
       if (state.phase !== GAME_PHASES.PLAYING) return;
       actionLocked = false;
       refreshTable();
+      renderTutorial();
     }, 580);
     return true;
   }
@@ -163,7 +270,12 @@ function handleAction(action, card) {
   }
 
   const hitCount = updateStreak(action);
+  state.round.live_elapsed_ms = Math.max(0, browserPlatform.now() - state.round.started_at_ms);
   const entry = engine.recordAction(state, action, card);
+  if (tutorial.active) {
+    if (action === "eat" && card.edibility === "edible") tutorial.correct_eat = true;
+    if (action === "discard" && card.edibility === "inedible") tutorial.correct_discard = true;
+  }
   if (state.round.timer_paused && state.round.timer_frozen_elapsed_ms === null) {
     state.round.timer_frozen_elapsed_ms = Math.max(1, browserPlatform.now() - state.round.started_at_ms);
   }
@@ -199,6 +311,7 @@ function handleAction(action, card) {
   if (!resolveEmptyDrawPile()) {
     actionLocked = false;
     refreshTable();
+    renderTutorial();
   }
 }
 
@@ -216,16 +329,32 @@ function handlePostpone(card) {
   const result = postponeCurrentCard(state);
   if (!result.success) {
     actionLocked = false;
-    ui.showEffectFlash("餐盘只剩一张牌，无法后置");
+    ui.showEffectFlash(result.reason === "already_postponed"
+      ? `「${card.name}」本轮已经后置过，不能再次后置`
+      : "餐盘只剩一张牌，无法后置");
     refreshTable();
     return;
   }
+  const effectResult = engine.recordPostpone(state, card);
   streak = { action: null, count: 0 };
   ui.setGestureProgress({ progress: 0, direction: null });
-  ui.showEffectFlash(`后置「${card.name}」· 将在餐盘最后再次出现`);
+  const effectMessages = [];
+  if (result.direction === "front") {
+    effectMessages.push(`送餐员调度 · 末牌「${result.revealed_card?.name ?? "未知牌"}」立即登场`);
+  } else {
+    effectMessages.push(`后置「${card.name}」· 将在牌堆最后再次出现`);
+  }
+  if (result.score_bonus > 0) {
+    effectMessages.push(`理牌托盘 +${result.score_bonus} 分`);
+    ui.showFloatingScore(result.score_bonus, "postpone", 1);
+  }
+  effectMessages.push(...effectResult.messages);
+  ui.showEffectFlash(effectMessages.join(" · "));
+  if (tutorial.active) tutorial.postponed = true;
   if (soundEnabled) playSound("effect", 1);
   actionLocked = false;
   refreshTable();
+  renderTutorial();
 }
 
 const gesture = createGestureController({
@@ -238,8 +367,17 @@ const gesture = createGestureController({
 
 function prepareRound() {
   resetRoundState(state);
+  const roundStartMessages = engine.applyRoundStartEffects(state);
   applyRoundItemSetup(state);
-  const shuffledDeck = shuffle(state.deck.map((card) => ({ ...card, effect: card.effect ? { ...card.effect } : null })));
+  state.deck.forEach((card) => {
+    if ((card.dormant_until_round ?? Number.POSITIVE_INFINITY) >= state.current_round) return;
+    delete card.dormant_until_round;
+    card.status_keywords = (card.status_keywords ?? []).filter((keyword) => keyword !== "休眠");
+  });
+  const activeDeck = state.deck.filter((card) => (card.dormant_until_round ?? 0) !== state.current_round);
+  const dormantCount = state.deck.length - activeDeck.length;
+  if (dormantCount > 0) roundStartMessages.push(`【休眠】${dormantCount} 张新购入牌本轮不进入牌堆`);
+  const shuffledDeck = shuffle(activeDeck.map((card) => ({ ...card, effect: card.effect ? { ...card.effect } : null })));
   Object.assign(state.round, takeRoundDrawPile(shuffledDeck, state.plate_capacity));
   shopBuffer = null;
   shopThemeBuffer = null;
@@ -254,6 +392,8 @@ function prepareRound() {
     state.round.started_at_ms = browserPlatform.now();
     actionLocked = false;
     ui.renderHud(state);
+    if (roundStartMessages.length > 0) ui.showEffectFlash(roundStartMessages.join(" · "));
+    renderTutorial();
   });
 }
 
@@ -288,6 +428,7 @@ function enterRuleDraft() {
     ui.closeRuleDraft();
     prepareRound();
   });
+  renderTutorial();
 }
 
 function enterShop() {
@@ -300,6 +441,7 @@ function enterShop() {
     shopThemeType = themed.type;
   } else shopThemeBuffer = shopService.repriceShopCards(state, shopThemeBuffer);
   if (shopItemBuffer === null) shopItemBuffer = shopService.getShopItems(state);
+  shopService.applyOpeningPriceOverride(state, [shopBuffer, shopThemeBuffer]);
   ui.openShop(
     state,
     shopBuffer,
@@ -311,7 +453,8 @@ function enterShop() {
         shopBuffer = shopBuffer.filter((card) => card !== item);
         shopThemeBuffer = shopThemeBuffer.filter((card) => card !== item);
         const refund = state.last_shop_transaction?.refund ?? 0;
-        ui.setShopMessage(`购入「${item.name}」，已加入永久牌组${refund > 0 ? `；候补餐罩返还 ${refund} 金币` : ""}。`, "success");
+        const dormant = state.last_shop_transaction?.dormant;
+        ui.setShopMessage(`购入「${item.name}」，已加入永久牌组${dormant ? "；受预购券影响，下轮休眠" : ""}${refund > 0 ? `；候补餐罩返还 ${refund} 金币` : ""}。`, "success");
       } else {
         const status = shopService.getBuyCardStatus(state, item);
         const message = {
@@ -344,7 +487,7 @@ function enterShop() {
       if (shopService.removeCard(state, cardUuid)) {
         const transaction = state.last_shop_transaction;
         ui.setShopMessage(
-          `删除「${transaction.card_name}」：支付 ${transaction.cost}；下次删牌费用 ${state.remove_card_cost}。`,
+          `删除「${transaction.card_name}」：${transaction.cost === 0 ? "使用免费删除" : `支付 ${transaction.cost}`}；下次删牌费用 ${state.remove_card_cost}。`,
           "success",
         );
       } else {
@@ -412,6 +555,12 @@ ui.bindControls({
   },
 });
 
+ui.bindTutorial({
+  onSkip: finishTutorial,
+  onContinue: finishTutorial,
+  onReplay: startTutorial,
+});
+
 window.addEventListener("keydown", (event) => {
   if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
   event.preventDefault();
@@ -428,7 +577,16 @@ function tickTimer() {
 window.addEventListener("pagehide", () => gesture.destroy(), { once: true });
 ui.setSoundState(soundEnabled);
 requestAnimationFrame(tickTimer);
-ui.openWelcome(() => {
+const launchGame = (withTutorial) => {
   startSound();
+  if (withTutorial) startTutorial();
+  else ui.hideStoryGuide();
   enterRuleDraft();
-}, browserPlatform.load_records()[0]?.score ?? null);
+};
+
+ui.openWelcome(
+  () => launchGame(false),
+  () => launchGame(true),
+  browserPlatform.load_records()[0]?.score ?? null,
+  browserPlatform.load_tutorial_complete(),
+);

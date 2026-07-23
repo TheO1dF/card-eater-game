@@ -16,8 +16,8 @@ export const RULE_LIBRARY = Object.freeze([
   { id: "drink-two", name: "畅饮时刻", description: "本轮至少吃 2 张饮料", scope: "min_eat_target", count: 2, target_type: "饮料", gold_reward: 4, difficulty: 3, min_round: 2 },
   { id: "dessert-two", name: "甜点储蓄", description: "本轮至少弃 2 张甜点", scope: "min_discard_target", count: 2, target_type: "甜点", gold_reward: 3, difficulty: 2 },
   { id: "celestial-two", name: "仰望星空", description: "本轮至少弃 2 张星体", scope: "min_discard_target", count: 2, target_type: "星体", gold_reward: 4, difficulty: 3, min_round: 2 },
-  { id: "postpone-two", name: "稍后再说", description: "本轮至少使用 2 次【后置】", scope: "min_postpone", count: 2, gold_reward: 2, difficulty: 1 },
-  { id: "postpone-five", name: "精密排餐", description: "本轮至少使用 5 次【后置】", scope: "min_postpone", count: 5, gold_reward: 4, difficulty: 3, min_round: 3 },
+  { id: "postpone-effect-one", name: "后置联动", description: "本轮至少触发 1 次【后置】相关卡牌效果", scope: "min_postpone_effect", count: 1, requires_keyword: "后置", gold_reward: 3, difficulty: 2 },
+  { id: "postpone-effect-two", name: "精密调度", description: "本轮至少触发 2 次【后置】相关卡牌效果", scope: "min_postpone_effect", count: 2, requires_keyword: "后置", gold_reward: 5, difficulty: 4, min_round: 3 },
   { id: "destroy-one", name: "有舍有得", description: "本轮通过【摧毁】移除至少 1 张牌", scope: "min_destroyed", count: 1, requires_keyword: "摧毁", gold_reward: 4, difficulty: 3, min_round: 2 },
   { id: "generate-one", name: "新成员", description: "本轮通过【生成】加入至少 1 张牌", scope: "min_generated", count: 1, requires_keyword: "生成", gold_reward: 4, difficulty: 3, min_round: 2 },
   { id: "grow-two", name: "长期投资", description: "本轮至少发生 2 次永久点数变化", scope: "min_grown", count: 2, requires_keyword: "成长", gold_reward: 3, difficulty: 2, min_round: 2 },
@@ -54,7 +54,7 @@ export function isRuleEligible(rule, deck = [], currentRound = 1) {
   if (rule.scope === "min_grown" && keywordMatching < rule.count) return false;
   if (rule.scope === "min_fruit_combo") {
     const maximumCombo = deck
-      .filter((card) => card.type === "水果" && card.effect?.kind === "fruit_combo")
+      .filter((card) => card.type === "水果" && card.effect?.keywords?.includes("水果连击"))
       .reduce((total, card) => total + Math.max(1, card.effect.combo_gain ?? 1), 0);
     if (maximumCombo < rule.count) return false;
   }
