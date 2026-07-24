@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { GAME_CONFIG, isQuestRound } from "../js/config.js";
+import { GAME_CONFIG, GAME_MODES, getFinalRound, getNextMilestone, isFreeRemovalRound, isQuestRound } from "../js/config.js";
 import { CARD_LIBRARY, createInitialDeck, createShopCardPool, getCardById } from "../js/data.js";
 import { createRoundEngine, evaluateRule } from "../js/engine.js";
 import { addItem, applyRoundItemSetup, createShopItemPool } from "../js/items.js";
@@ -11,6 +11,7 @@ import { postponeCurrentCard, takeRoundDrawPile } from "../js/plate.js";
 import { activateReshuffle, getReshuffleStatus } from "../js/reshuffle.js";
 import { RULE_LIBRARY, isRuleEligible, randomDraftRules } from "../js/rules.js";
 import { createShopService } from "../js/shop.js";
+import { QUEST_LIBRARY, activatePendingQuestRewards, finalizeQuest, randomDraftQuests, selectQuest } from "../js/quests.js";
 import { GAME_PHASES, createInitialPlayerState, resetRoundState, transitionPhase } from "../js/state.js";
 
 let uuidCounter = 0;
@@ -381,14 +382,14 @@ test("风干柿子追溯已吃水果，融化圣代后置时摧毁并强化下�
   assert.equal(sundae.deck[0].eat_points, 3);
 });
 
-test("石榴生成两张无效果弱化苹果，灯笼果直接获得金币", () => {
+test("石榴摧毁自身并生成两张保留效果的梨，灯笼果直接获得金币", () => {
   const engine = createRoundEngine({ random: () => 0 });
   const state = stateWith(["F001", "A001", "F013", "F012"]);
   const pomegranate = engine.recordAction(state, "eat", state.deck[3]);
   assert.equal(state.deck.some((card) => card.id === "F012"), false);
   const generated = state.deck.filter((card) => card.generated_from === "F012");
   assert.equal(generated.length, 2);
-  assert.ok(generated.every((card) => card.weakened && !card.effect));
+  assert.ok(generated.every((card) => card.id === "F009" && !card.weakened && card.effect?.kind === "fruit_combo"));
   assert.match(pomegranate.effect_triggered, /生成 2 张/);
 
   engine.recordAction(state, "eat", state.deck.find((card) => card.id === "F013"));
@@ -748,9 +749,55 @@ test("第一轮合约池过滤七张牌不可能完成的水果与成长要求",
   assert.equal(isRuleEligible(RULE_LIBRARY.find((rule) => rule.id === "grow-two"), deck, 1), false);
 });
 
-test("旧危险任务轮已停用", () => {
-  assert.equal(GAME_CONFIG.last_quest_round, 0);
-  for (let round = 1; round <= GAME_CONFIG.total_rounds; round += 1) assert.equal(isQuestRound(round), false);
+test("普通与无尽模式没有危险任务，高难模式在第 4/8/12 轮强制任务", () => {
+  for (let round = 1; round <= GAME_CONFIG.total_rounds; round += 1) {
+    assert.equal(isQuestRound(round, GAME_MODES.NORMAL), false);
+    assert.equal(isQuestRound(round, GAME_MODES.ENDLESS), false);
+    assert.equal(isQuestRound(round, GAME_MODES.HARD), [4, 8, 12].includes(round));
+  }
+});
+
+test("无尽模式保留前三个门槛并在第 16 轮后取消终局", () => {
+  assert.equal(getNextMilestone(15, {}, GAME_MODES.ENDLESS).target, 500);
+  assert.deepEqual(getNextMilestone(16, {}, GAME_MODES.ENDLESS), {
+    base_round: null, round: null, target: 0, endless: true,
+  });
+  assert.equal(getFinalRound({}, GAME_MODES.NORMAL), 15);
+  assert.equal(getFinalRound({}, GAME_MODES.HARD), 15);
+  assert.equal(getFinalRound({}, GAME_MODES.ENDLESS), Number.POSITIVE_INFINITY);
+});
+
+test("高难任务三选一、单轮追踪并在下一轮发放高级道具", () => {
+  const state = createInitialPlayerState({ create_id: nextId });
+  resetRoundState(state);
+  state.mode = GAME_MODES.HARD;
+  state.current_round = 4;
+  assert.equal(randomDraftQuests(3, state, () => 0).length, 3);
+  const discardQuest = randomDraftQuests(3, state, () => 0).find((entry) => entry.id === "QST02");
+  assert.ok(discardQuest);
+  selectQuest(state, discardQuest, nextId);
+  state.round.discard_sequence = Array.from({ length: 5 }, (_, index) => ({ index }));
+  const result = finalizeQuest(state, { round_score: 0 });
+  assert.equal(result.completed, true);
+  assert.equal(state.pending_rewards[0].effective_round, 5);
+  state.current_round = 5;
+  assert.deepEqual(activatePendingQuestRewards(state), ["回收钱包"]);
+  assert.equal(state.items[0].rarity, "高级道具");
+});
+
+test("高难虚空任务洗入可部署的无类别负分牌", () => {
+  const state = createInitialPlayerState({ create_id: nextId });
+  state.current_round = 4;
+  const before = state.deck.length;
+  selectQuest(state, QUEST_LIBRARY.find((entry) => entry.id === "QST03"), nextId);
+  const voidCard = state.deck.at(-1);
+  assert.equal(state.deck.length, before + 1);
+  assert.equal(voidCard.id, "Q001");
+  assert.equal(voidCard.type, "无类别");
+  assert.equal(voidCard.eat_points, -2);
+  assert.equal(voidCard.discard_points, -1);
+  assert.equal(voidCard.effect, null);
+  assert.equal(voidCard.art_file, "cards/v017/c008-v3.png");
 });
 
 test("商店同时提供三张随机卡与三张相同类别卡", () => {
@@ -763,6 +810,16 @@ test("商店同时提供三张随机卡与三张相同类别卡", () => {
   assert.equal(themed.cards.length, 3);
   assert.equal(new Set(themed.cards.map((card) => card.type)).size, 1);
   assert.equal(themed.cards[0].type, themed.type);
+});
+
+test("商店购买不再限制同名卡持有数量", () => {
+  const state = stateWith(["F003", "F003", "F003", "F003"]);
+  state.gold = 99;
+  const service = createShopService({ random: () => 0, create_id: nextId });
+  const offer = { ...getCardById("F003"), shop_price: 1 };
+  assert.equal(service.getBuyCardStatus(state, offer).ok, true);
+  assert.equal(service.buyCard(state, offer), true);
+  assert.equal(state.deck.filter((card) => card.id === "F003").length, 5);
 });
 
 test("刷新价格按 2、3、4 递增且返回双卡牌货架与两件道具", () => {
@@ -792,6 +849,22 @@ test("商店道具池为 24 件，弱道具便宜且重洗道具为后期高价�
   assert.ok(items.some((item) => item.effect.kind === "round_generate_weakened"));
   assert.ok(items.find((item) => item.effect.kind === "round_reshuffle_charge").shop_price >= 20);
   assert.ok(items.filter((item) => item.shop_price <= 4).length >= 6);
+  for (const id of ["IT105", "IT108", "IT112", "IT113", "IT114", "IT115", "IT118"]) {
+    assert.ok(items.find((item) => item.id === id).shop_price <= 8, id);
+  }
+});
+
+test("每五轮获得的免费删牌可累积并优先免除金币费用", () => {
+  assert.deepEqual(Array.from({ length: 20 }, (_, index) => index + 1).filter(isFreeRemovalRound), [5, 10, 15, 20]);
+  const state = stateWith(["F001", "A001"]);
+  state.remove_card_cost = 12;
+  state.free_card_removals = 1;
+  const service = createShopService({ random: () => 0, create_id: nextId });
+  assert.equal(service.getRemoveCardCost(state), 0);
+  assert.equal(service.removeCard(state, state.deck[0].uuid), true);
+  assert.equal(state.gold, 0);
+  assert.equal(state.free_card_removals, 0);
+  assert.equal(state.last_shop_transaction.free_source, "milestone");
 });
 
 test("纸果篮每轮至多维持一张弱化苹果并会进入本轮洗牌", () => {
@@ -838,6 +911,13 @@ test("页面提供持续合约、故事教学、后置、自动重洗、同类�
   assert.match(html, /未完成会跨轮保留/);
   assert.match(html, /id="storyGuide"/);
   assert.match(html, /id="tutorialInfoButton"/);
+  assert.match(html, /id="endlessStartButton"/);
+  assert.match(html, /id="hardStartButton"/);
+  assert.match(html, /id="shopLock"/);
+  assert.match(html, /id="gameMenu"/);
+  assert.match(html, /id="cardCatalog"/);
+  assert.match(html, /data-font-size="small"/);
+  assert.match(html, /data-font-size="large"/);
   assert.match(css, /\.card-point-wrap\.point-increased/);
   assert.match(css, /\.card-point-wrap\.point-decreased/);
   assert.match(css, /color: #fff8e8/);

@@ -21,62 +21,62 @@ const shopItem = (definition, iconIndex) => Object.freeze({
 
 export const ITEM_LIBRARY = Object.freeze([
   item({
-    id: "IT001", name: "重启按钮", rarity: "任务", role: "主动",
+    id: "IT001", name: "重启按钮", rarity: "高级道具", role: "主动",
     description: "牌组不超过 10 张时，每轮获得 1 次重洗。",
     effect: { kind: "round_reshuffle_charge", charges: 1, max_deck_size: 10 },
   }, 0),
   item({
-    id: "IT002", name: "回收钱包", rarity: "任务", role: "经济",
+    id: "IT002", name: "回收钱包", rarity: "高级道具", role: "经济",
     description: "每轮每弃 3 张牌获得 2 金币，最多触发 3 次。",
     effect: { kind: "discard_gold_every", count: 3, gold: 2, max_triggers: 3 },
   }, 1),
   item({
-    id: "IT003", name: "冥王星仪", rarity: "任务", role: "位置",
+    id: "IT003", name: "冥王星仪", rarity: "高级道具", role: "位置",
     description: "每轮最后一张牌若被弃掉，额外 +5 分。",
     effect: { kind: "last_discard_bonus", bonus: 5 },
   }, 2),
   item({
-    id: "IT004", name: "袖珍食谱", rarity: "任务", role: "小牌组",
+    id: "IT004", name: "袖珍食谱", rarity: "高级道具", role: "小牌组",
     description: "牌组不超过 8 张时，本轮最终得分 ×1.25。",
     effect: { kind: "deck_size_multiplier", maximum: 8, multiplier: 1.25 },
   }, 3),
   item({
-    id: "IT005", name: "优惠打印机", rarity: "任务", role: "商店",
+    id: "IT005", name: "优惠打印机", rarity: "高级道具", role: "商店",
     description: "每间商店获得 1 次免费刷新；刷新后仍会提高后续价格。",
     effect: { kind: "free_shop_reroll", count: 1 },
   }, 4),
   item({
-    id: "IT006", name: "苦味勋章", rarity: "任务", role: "牺牲",
+    id: "IT006", name: "苦味勋章", rarity: "高级道具", role: "牺牲",
     description: "吃下负分牌后的下一张牌额外 +4 分。",
     effect: { kind: "after_negative_eat_bonus", bonus: 4 },
   }, 5),
   item({
-    id: "IT007", name: "无底封条", rarity: "任务", role: "大牌组",
+    id: "IT007", name: "无底封条", rarity: "高级道具", role: "大牌组",
     description: "牌组达到 14 张时，本轮最终得分 ×1.05。",
     effect: { kind: "deck_size_multiplier", minimum: 14, multiplier: 1.05 },
   }, 6),
   item({
-    id: "IT008", name: "任务王冠", rarity: "任务", role: "通用",
+    id: "IT008", name: "任务王冠", rarity: "高级道具", role: "通用",
     description: "永久使每轮最终得分 ×1.1。",
     effect: { kind: "global_multiplier", multiplier: 1.1 },
   }, 7),
   item({
-    id: "IT009", name: "拆解徽记", rarity: "任务", role: "摧毁",
+    id: "IT009", name: "拆解徽记", rarity: "高级道具", role: "摧毁",
     description: "本轮至少【摧毁】1 张牌时，最终得分 ×1.15。",
     effect: { kind: "destroyed_multiplier", minimum: 1, multiplier: 1.15 },
   }, 0),
   item({
-    id: "IT010", name: "万花镜", rarity: "任务", role: "多样性",
+    id: "IT010", name: "万花镜", rarity: "高级道具", role: "多样性",
     description: "每轮每种类别首次出现时，该牌额外 +2 分。",
     effect: { kind: "first_type_bonus", bonus: 2 },
   }, 1),
   item({
-    id: "IT011", name: "孵化灯", rarity: "任务", role: "生成",
+    id: "IT011", name: "孵化灯", rarity: "高级道具", role: "生成",
     description: "由【生成】加入牌组的卡牌额外 +3 分。",
     effect: { kind: "generated_card_bonus", bonus: 3 },
   }, 2),
   item({
-    id: "IT012", name: "节奏鞋", rarity: "任务", role: "交替",
+    id: "IT012", name: "节奏鞋", rarity: "高级道具", role: "交替",
     description: "行动与前一张牌的吃/弃不同时，额外 +2 分。",
     effect: { kind: "alternating_action_bonus", bonus: 2 },
   }, 3),
@@ -101,7 +101,7 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "retention_growth_bonus", amount: 1 },
   }, 3),
   shopItem({
-    id: "IT105", name: "投币吸管", rarity: "普通道具", role: "饮料经济", shop_price: 6, min_shop_round: 2, max_shop_round: 8,
+    id: "IT105", name: "投币吸管", rarity: "普通道具", role: "饮料经济", shop_price: 4, min_shop_round: 2, max_shop_round: 8,
     description: "每轮第一次吃掉并摧毁饮料时，结算金币 +1。",
     effect: { kind: "drink_first_gold", gold: 1 },
   }, 4),
@@ -116,7 +116,7 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "first_type_bonus", target_type: "星体", bonus: 2 },
   }, 6),
   shopItem({
-    id: "IT108", name: "工会徽章", rarity: "普通道具", role: "人物经济", shop_price: 7, min_shop_round: 2, max_shop_round: 10,
+    id: "IT108", name: "工会徽章", rarity: "普通道具", role: "人物经济", shop_price: 4, min_shop_round: 2, max_shop_round: 10,
     description: "每轮第一次弃掉人物牌时，结算金币 +1。",
     effect: { kind: "first_type_gold", target_type: "人物", action: "discard", gold: 1 },
   }, 7),
@@ -136,22 +136,22 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "round_reshuffle_charge", charges: 1, max_deck_size: 10 },
   }, 10),
   shopItem({
-    id: "IT112", name: "优惠打印机", rarity: "普通道具", role: "刷新经济", shop_price: 10, min_shop_round: 4, max_shop_round: 9,
+    id: "IT112", name: "优惠打印机", rarity: "普通道具", role: "刷新经济", shop_price: 6, min_shop_round: 4, max_shop_round: 9,
     description: "每间商店获得 1 次免费刷新，免费刷新仍会推进后续价格。",
     effect: { kind: "free_shop_reroll", count: 1 },
   }, 11),
   shopItem({
-    id: "IT113", name: "夜市会员卡", rarity: "普通道具", role: "商店经济", shop_price: 14, min_shop_round: 5, max_shop_round: 10,
+    id: "IT113", name: "夜市会员卡", rarity: "普通道具", role: "商店经济", shop_price: 8, min_shop_round: 5, max_shop_round: 10,
     description: "商店卡牌价格额外 -1，最低仍为 1 金币。",
     effect: { kind: "shop_price_discount", amount: 1 },
   }, 12),
   shopItem({
-    id: "IT114", name: "餐盘量尺", rarity: "普通道具", role: "扩容经济", shop_price: 9, min_shop_round: 2, max_shop_round: 9,
+    id: "IT114", name: "餐盘量尺", rarity: "普通道具", role: "扩容经济", shop_price: 5, min_shop_round: 2, max_shop_round: 9,
     description: "餐盘扩容费用永久 -1，最低仍为 1 金币。",
     effect: { kind: "plate_upgrade_discount", amount: 1 },
   }, 13),
   shopItem({
-    id: "IT115", name: "连击钱旗", rarity: "普通道具", role: "水果经济", shop_price: 7, min_shop_round: 3, max_shop_round: 10,
+    id: "IT115", name: "连击钱旗", rarity: "普通道具", role: "水果经济", shop_price: 4, min_shop_round: 3, max_shop_round: 10,
     description: "每轮水果连击首次达到 3 时，结算金币 +1。",
     effect: { kind: "fruit_combo_first_gold", threshold: 3, gold: 1 },
   }, 14),
@@ -166,7 +166,7 @@ export const ITEM_LIBRARY = Object.freeze([
     effect: { kind: "round_generate_weakened", card_id: "F001" },
   }, 16),
   shopItem({
-    id: "IT118", name: "苦差零钱袋", rarity: "普通道具", role: "风险刷新", shop_price: 8, min_shop_round: 3, max_shop_round: 9,
+    id: "IT118", name: "苦差零钱袋", rarity: "普通道具", role: "风险刷新", shop_price: 5, min_shop_round: 3, max_shop_round: 9,
     description: "每轮首次选择牌面负分的一侧时，随后商店获得 1 次免费刷新。",
     effect: { kind: "negative_action_free_reroll", count: 1 },
   }, 17),

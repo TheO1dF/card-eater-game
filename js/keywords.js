@@ -93,7 +93,7 @@ const KIND_KEYWORDS = Object.freeze({
   fruit_combo_discard_shield: ["水果连击", "摧毁", "机制"],
   fruit_combo_forecast: ["水果连击", "预判"],
   reserve_growth: ["成长", "规模"],
-  destroy_generate_many: ["摧毁", "生成", "弱化"],
+  destroy_generate_many: ["摧毁", "生成"],
   anorexia: ["厌食", "成长"],
   early_time_bonus: ["机制"],
   fast_food_anorexia_or_positive_count: ["厌食", "成长", "规模"],

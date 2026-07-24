@@ -15,7 +15,7 @@
     <link rel="preload" href="./assets/cards/v017/c001-v3.png?v=14" as="image" type="image/png" fetchpriority="high" />
     <link rel="preload" href="./assets/cards/v017/a001-v3.png?v=14" as="image" type="image/png" fetchpriority="high" />
     <link rel="preload" href="./assets/cards/v017/u001-v3.png?v=14" as="image" type="image/png" fetchpriority="high" />
-    <link rel="stylesheet" href="./styles.css?v=16" />
+    <link rel="stylesheet" href="./styles.css?v=18" />
   </head>
   <body>
     <main class="app" id="app">
@@ -30,9 +30,8 @@
             <button class="icon-button deck-info-button" id="deckInfoButton" type="button" aria-label="随时查看牌组">组</button>
             <button class="icon-button rule-info-button" id="ruleInfoButton" type="button" aria-label="随时查看当前持续合约">约</button>
             <button class="icon-button item-info-button" id="itemInfoButton" type="button" aria-label="随时查看已选道具">具</button>
-            <button class="icon-button tutorial-info-button" id="tutorialInfoButton" type="button" aria-label="重玩故事教学">教</button>
-            <button class="icon-button quest-info-button" id="questInfoButton" type="button" aria-label="旧危险任务已停用" disabled hidden>任</button>
-            <button class="icon-button" id="soundButton" type="button" aria-label="切换声音" aria-pressed="true">♪</button>
+            <button class="icon-button quest-info-button" id="questInfoButton" type="button" aria-label="查看高难任务" disabled hidden>任</button>
+            <button class="icon-button menu-button" id="menuButton" type="button" aria-label="打开游戏菜单">☰</button>
           </div>
         </header>
 
@@ -102,7 +101,11 @@
               <button class="primary-button start-button" id="startGameButton" type="button">开始故事教学</button>
               <button class="secondary-button tutorial-start-button" id="tutorialStartButton" type="button">跳过教学 · 直接开始</button>
             </div>
-            <small>声音可在游戏内右上角随时开关</small>
+            <div class="unlocked-modes" id="unlockedModes" hidden>
+              <button class="mode-button endless-mode-button" id="endlessStartButton" type="button"><b>∞ 无尽模式</b><small>前 15 轮相同；通过 500 分目标后无限继续</small></button>
+              <button class="mode-button hard-mode-button" id="hardStartButton" type="button"><b>◆ 高难模式</b><small>每 4 轮必须选择一项危险任务</small></button>
+            </div>
+            <small id="modeUnlockHint">首次通关后解锁无尽模式与高难模式</small>
           </section>
         </div>
 
@@ -198,6 +201,44 @@
           </section>
         </div>
 
+        <div class="overlay menu-overlay" id="gameMenu" role="dialog" aria-modal="true" aria-labelledby="gameMenuTitle">
+          <section class="modal-panel game-menu-panel">
+            <div class="eyebrow">PAUSE & REFERENCE</div>
+            <h1 id="gameMenuTitle">游戏菜单</h1>
+            <div class="menu-mode-label" id="menuModeLabel">普通模式</div>
+            <div class="settings-grid">
+              <button class="setting-toggle" id="musicToggle" type="button" aria-pressed="true"><span>音乐</span><b>开启</b></button>
+              <button class="setting-toggle" id="effectsToggle" type="button" aria-pressed="true"><span>音效</span><b>开启</b></button>
+            </div>
+            <div class="font-size-setting">
+              <span><b>界面字号</b><small>卡牌数值与布局不会缩放错位</small></span>
+              <div role="group" aria-label="界面字号">
+                <button type="button" data-font-size="small">小</button>
+                <button type="button" data-font-size="medium">标准</button>
+                <button type="button" data-font-size="large">大</button>
+              </div>
+            </div>
+            <button class="menu-wide-button" id="cardCatalogButton" type="button"><b>卡牌图鉴</b><small>查看完整卡池、数值与效果</small></button>
+            <button class="menu-wide-button" id="tutorialInfoButton" type="button"><b>重玩故事教学</b><small>重新查看吃、弃与后置教学</small></button>
+            <button class="primary-button" id="gameMenuClose" type="button">返回游戏</button>
+          </section>
+        </div>
+
+        <div class="overlay catalog-overlay" id="cardCatalog" role="dialog" aria-modal="true" aria-labelledby="cardCatalogTitle">
+          <section class="modal-panel catalog-panel">
+            <div class="catalog-heading">
+              <div><div class="eyebrow">FULL CARD LIBRARY</div><h1 id="cardCatalogTitle">卡牌图鉴</h1></div>
+              <button class="shop-reroll-button" id="cardCatalogClose" type="button">返回菜单</button>
+            </div>
+            <div class="catalog-tools">
+              <label for="catalogTypeFilter">类别</label>
+              <select id="catalogTypeFilter"><option value="all">全部类别</option></select>
+              <span id="catalogSummary">0 张卡牌</span>
+            </div>
+            <div class="catalog-grid" id="catalogList"></div>
+          </section>
+        </div>
+
         <div class="overlay" id="roundSummary" role="dialog" aria-modal="true" aria-labelledby="summaryTitle">
           <section class="modal-panel summary-panel">
             <div class="eyebrow" id="summaryEyebrow">ROUND CLEAR</div>
@@ -239,6 +280,7 @@
             <div class="shop-item-grid" id="shopItemOfferList"></div>
             <div class="shop-reroll-row">
               <button class="shop-reroll-button" id="shopReroll" type="button">刷新商品 · $2</button>
+              <button class="shop-lock-button" id="shopLock" type="button" aria-pressed="false">◇ 锁定下轮商店</button>
               <small>购买不会自动补货；刷新按 2、3、4……递增</small>
             </div>
             <div class="shop-section-title"><span>我的牌组</span><small>删牌费用 <b id="shopDeleteCost">0</b> · 不返还金币</small></div>
@@ -261,6 +303,6 @@
         </div>
       </section>
     </main>
-    <script type="module" src="./js/main.js?v=16"></script>
+    <script type="module" src="./js/main.js?v=18"></script>
   </body>
 </html>

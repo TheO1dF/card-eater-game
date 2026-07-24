@@ -49,8 +49,7 @@ export function createShopService(options = {}) {
   function getEligibleCardPool(state) {
     return createShopCardPool().filter((card) => {
       if ((card.min_shop_round ?? 1) > state.current_round) return false;
-      if (!card.max_copies) return true;
-      return state.deck.filter((owned) => owned.id === card.id).length < card.max_copies;
+      return true;
     });
   }
 
@@ -113,9 +112,6 @@ export function createShopService(options = {}) {
     if (state.gold < card.shop_price) return { ok: false, reason: "insufficient_gold" };
     const cleanCard = getCardById(card.id);
     if (!cleanCard) return { ok: false, reason: "missing_card" };
-    if (cleanCard.max_copies && state.deck.filter((owned) => owned.id === cleanCard.id).length >= cleanCard.max_copies) {
-      return { ok: false, reason: "copy_limit" };
-    }
     return { ok: true, reason: null, card: cleanCard };
   }
 
@@ -221,7 +217,9 @@ export function createShopService(options = {}) {
   }
 
   function removeCard(state, cardUuid) {
-    const free = (state.round.shop_free_removals ?? 0) > 0;
+    const roundFree = (state.round.shop_free_removals ?? 0) > 0;
+    const earnedFree = (state.free_card_removals ?? 0) > 0;
+    const free = roundFree || earnedFree;
     const removalCost = free ? 0 : state.remove_card_cost;
     if (state.deck.length <= 1 || state.gold < removalCost) return false;
     const index = state.deck.findIndex((card) => card.uuid === cardUuid);
@@ -232,12 +230,14 @@ export function createShopService(options = {}) {
     state.gold = safeAdd(state.gold, -cost);
     state.deck.splice(index, 1);
     state.remove_count += 1;
-    if (free) state.round.shop_free_removals = Math.max(0, state.round.shop_free_removals - 1);
+    if (roundFree) state.round.shop_free_removals = Math.max(0, state.round.shop_free_removals - 1);
+    else if (earnedFree) state.free_card_removals = Math.max(0, state.free_card_removals - 1);
     state.remove_card_cost = state.remove_count * GAME_CONFIG.delete_cost_step;
     state.last_shop_transaction = {
       kind: "remove",
       card_name: removed.name,
       cost,
+      free_source: roundFree ? "round" : earnedFree ? "milestone" : null,
     };
     return true;
   }
@@ -255,7 +255,9 @@ export function createShopService(options = {}) {
   }
 
   function getRemoveCardCost(state) {
-    return (state.round.shop_free_removals ?? 0) > 0 ? 0 : state.remove_card_cost;
+    return (state.round.shop_free_removals ?? 0) > 0 || (state.free_card_removals ?? 0) > 0
+      ? 0
+      : state.remove_card_cost;
   }
 
   return {

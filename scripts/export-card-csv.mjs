@@ -6,7 +6,7 @@ import { getRarityPrice } from "../js/balance.js";
 import { CARD_LIBRARY } from "../js/data.js";
 
 const root = resolve(fileURLToPath(new URL("../", import.meta.url)));
-const starterIds = new Set(["F001", "F002", "K001", "D001", "C001", "A001", "U001"]);
+const starterIds = new Set(["F002", "F003", "K001", "D001", "A001", "A008", "A004"]);
 const roleLabels = Object.freeze({
   baseline: "基础", setup: "启动", payoff: "收割", sacrifice: "牺牲", engine: "成长引擎", economy: "经济",
 });
@@ -16,7 +16,7 @@ function csv(value) {
   return /[",\r\n]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-const headers = ["编号", "名称", "初始牌", "食用属性", "类别", "稀有度", "商店价", "持有上限", "吃分", "弃分", "角色", "联动标签", "关键字", "效果类型", "效果"];
+const headers = ["编号", "名称", "初始牌", "食用属性", "类别", "稀有度", "商店价", "吃分", "弃分", "角色", "联动标签", "关键字", "效果类型", "效果"];
 const rows = Object.values(CARD_LIBRARY).map((card) => [
   card.id,
   card.name,
@@ -25,7 +25,6 @@ const rows = Object.values(CARD_LIBRARY).map((card) => [
   card.type,
   card.rarity,
   starterIds.has(card.id) || card.rarity === "诅咒" ? "-" : getRarityPrice(card.rarity),
-  card.max_copies,
   card.eat_points,
   card.discard_points,
   roleLabels[card.role] ?? card.role,

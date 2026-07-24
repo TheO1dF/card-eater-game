@@ -10,6 +10,16 @@ Primary source of truth: `js/config.js`, `js/data.js`, `js/engine.js`, `js/plate
 
 CardEater Classic is a 15-round, mobile-first deck-building roguelite played by resolving one card at a time from a plate.
 
+### Runtime mode addendum (v0.18)
+
+- **Normal mode** keeps the 15-round structure and the cumulative checkpoints at rounds 5 / 10 / 15: 100 / 300 / 500 score.
+- The first locally recorded victory permanently unlocks **Endless mode** and **Hard mode** in that browser.
+- **Endless mode** is identical to Normal through the 500-point gate. After passing that gate it continues from round 16 with no further cumulative score checkpoints.
+- **Hard mode** keeps the Normal checkpoints and adds a mandatory three-choice dangerous quest at rounds 4, 8, and 12. The chosen penalty applies immediately, the requirement is evaluated only in that round, and success grants an advanced item at the start of the next round.
+- Every mode grants one bankable free card removal after each five completed rounds.
+- A shop can be locked so its remaining card and item offers carry into the next shop instead of being rerolled.
+- The in-game menu stores separate music and sound-effect toggles plus small / medium / large UI text settings, and exposes a full 89-card compendium.
+
 The player has three verbs:
 
 1. **Eat** the current card.
@@ -28,13 +38,13 @@ The game must reward planning without becoming an automatic spreadsheet. A good 
 
 ## 2. Run structure and victory conditions
 
-- A run lasts at most **15 rounds**.
+- A Normal or Hard run lasts at most **15 rounds**; Endless continues after passing the round-15 gate.
 - Cumulative score checkpoints are:
   - End of round 5: at least **100** total score.
   - End of round 10: at least **300** total score.
   - End of round 15: at least **500** total score.
 - Missing a checkpoint immediately ends the run in defeat.
-- Passing the round-15 checkpoint ends the run in victory.
+- Passing the round-15 checkpoint ends a Normal or Hard run in victory; Endless continues without further score gates.
 - There is no permanent metagame power progression in the current design.
 
 The per-round loop is:
@@ -313,14 +323,17 @@ This catalogue exists to prevent proposed cards from duplicating existing decisi
 |---|---|---|---:|---|
 | F001 | Apple | Common | +1 / -1 | Blank Fruit baseline. |
 | F002 | Banana | Common | +1 / -1 | Combo +1; at combo 3, once per round generate an Apple. |
-| F003 | Watermelon | Common | +2 / -1 | Combo +1; at combo 3 gain +3. |
+| F003 | Watermelon | Rare | +2 / -1 | Combo +1; at combo 3 gain +3. |
 | F004 | Strawberry | Uncommon | +1 / -1 | Combo +2; gains current combo as score, capped at +8. |
-| F005 | Golden Apple | Rare | +2 / -1 | Combo +1; at combo 4 permanently gains +1 Eat. |
+| F005 | Golden Apple | Common | +2 / -1 | Combo +1; at combo 4 permanently gains +1 Eat. |
 | F006 | Rotten Apple | Uncommon | -1 / -2 | Combo +1; opening it at zero combo grants +4. |
 | F007 | Fruit Platter | Rare | +2 / -1 | Combo +2; at combo 4 generate one random Weakened Fruit once per round. |
 | F008 | Dragon Fruit | Legendary | +3 / -2 | Combo +1; at combo 5 doubles Fruit Combo bonus. |
-| F009 | Pear | Common | +1 / -1 | Blank Fruit baseline. |
+| F009 | Pear | Common | +1 / -1 | Combo +1 without receiving combo score. |
 | F010 | Candied Plum | Uncommon | +1 / -1 | Combo +1; once per round, after a broken combo, resume from the round's best combo, capped at 5 before this card's gain. |
+| F011 | Dried Persimmon | Uncommon | 0 / -1 | Eat gains the number of Fruits eaten earlier this round, capped at +4. |
+| F012 | Pomegranate | Rare | +2 / -1 | Eat destroys itself; two full-effect Pears enter the permanent deck for the next round. |
+| F013 | Cape Gooseberry | Common | +1 / -1 | Eat gains 1 gold. |
 
 ### Fast Food
 

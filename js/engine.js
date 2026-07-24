@@ -346,7 +346,8 @@ function applyCardEffect(state, action, card, entry, random = Math.random) {
       })) generated += 1;
     }
     if (removed) entry.destroyed_self = true;
-    markEffect(entry, card, `${card.name}：${removed ? "摧毁自身，" : ""}生成 ${generated} 张【弱化】${template?.name ?? "卡牌"}`);
+    const generatedLabel = `${effect.generate_weakened ? "【弱化】" : ""}${template?.name ?? "卡牌"}`;
+    markEffect(entry, card, `${card.name}：${removed ? "摧毁自身，" : ""}生成 ${generated} 张${generatedLabel}`);
   }
 
   if (effect.kind === "early_time_bonus" && action === effect.trigger_action) {
@@ -2408,7 +2409,7 @@ export function createRoundEngine(options = {}) {
     applyRoundStartEffects,
     getGoldReward,
     levelProgressCheck,
-    getNextTargetInfo: (state) => getNextMilestone(state.current_round, state.milestone_delays),
-    getFinalRound: (state) => getFinalRound(state.milestone_delays),
+    getNextTargetInfo: (state) => getNextMilestone(state.current_round, state.milestone_delays, state.mode),
+    getFinalRound: (state) => getFinalRound(state.milestone_delays, state.mode),
   };
 }

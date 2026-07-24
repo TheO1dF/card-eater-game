@@ -554,6 +554,7 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 .overlay.show { display: grid; animation: overlayIn 140ms steps(3, end); }
 @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
+.menu-overlay { z-index: 90; }
 
 .welcome-overlay { inset: 0; z-index: 100; background: #100c17; }
 .welcome-panel {
@@ -926,6 +927,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .shop-item-card strong { margin-top: 4px; font-size: 12px; }
 .shop-item-card em { margin-top: 6px; color: #b6c8bc; font-size: 8px; font-style: normal; line-height: 1.45; }
 .shop-card {
+  --shop-rarity: #8b9098;
   position: relative;
   min-height: 118px;
   display: grid;
@@ -933,17 +935,22 @@ button { -webkit-tap-highlight-color: transparent; }
   align-items: start;
   gap: 12px;
   padding: 10px;
-  border: 2px solid #53425f;
+  border: 3px solid var(--shop-rarity);
   color: var(--paper);
   background: #2c2439;
-  box-shadow: 4px 4px 0 #0b0911;
+  box-shadow: 4px 4px 0 #0b0911, inset 0 0 0 1px color-mix(in srgb, var(--shop-rarity) 48%, transparent);
   text-align: left;
   cursor: pointer;
 }
-.shop-card:hover { border-color: var(--gold); }
-.shop-card-icon { display: block; width: 46px; height: 46px; place-self: start center; border: 1px solid #685671; background-color: #18131f; background-clip: padding-box; transform-origin: center; filter: hue-rotate(var(--sprite-hue, 0deg)) drop-shadow(2px 3px 0 rgba(0,0,0,.35)); }
+.shop-card.rarity-common { --shop-rarity: #8b9098; }
+.shop-card.rarity-uncommon { --shop-rarity: #4d9eff; }
+.shop-card.rarity-rare { --shop-rarity: #f2c14e; }
+.shop-card.rarity-legendary { --shop-rarity: #e05252; }
+.shop-card.rarity-curse { --shop-rarity: #a96ad8; }
+.shop-card:hover, .shop-card:focus-visible { border-color: color-mix(in srgb, var(--shop-rarity) 72%, white); outline: 0; filter: brightness(1.08); }
+.shop-card-icon { display: block; width: 46px; height: 46px; place-self: start center; border: 1px solid var(--shop-rarity); background-color: #18131f; background-clip: padding-box; transform-origin: center; filter: hue-rotate(var(--sprite-hue, 0deg)) drop-shadow(2px 3px 0 rgba(0,0,0,.35)); }
 .shop-card-copy { display: flex; flex-direction: column; min-width: 0; }
-.shop-card-copy small { color: #9a88a4; font-size: 7px; line-height: 1.35; }
+.shop-card-copy small { color: var(--shop-rarity); font-size: 7px; font-weight: 900; line-height: 1.35; }
 .shop-card-copy strong { margin-top: 4px; font-size: 13px; line-height: 1.2; }
 .shop-card-copy em, .shop-card-copy i { margin-top: 6px; color: #bbaaC5; font-size: 8px; font-style: normal; line-height: 1.35; }
 .shop-card-copy i { color: #8e7e99; }
@@ -953,6 +960,8 @@ button { -webkit-tap-highlight-color: transparent; }
 .shop-reroll-row small { color: #887890; font-size: 7px; text-align: right; }
 .shop-reroll-button { min-width: 190px; min-height: 38px; display: grid; place-items: center; padding: 9px 12px; border: 2px solid #765d84; color: var(--gold); background: #241d2f; box-shadow: 3px 3px 0 #09070d; cursor: pointer; font-weight: 900; line-height: 1.25; text-align: center; }
 .shop-reroll-button:disabled { color: #706477; border-color: #463b4e; cursor: not-allowed; box-shadow: none; }
+.shop-lock-button { min-width: 176px; min-height: 38px; padding: 8px 12px; border: 2px solid #5f526b; color: #c4b2ce; background: #1b1623; box-shadow: 3px 3px 0 #09070d; cursor: pointer; font-weight: 900; }
+.shop-lock-button.is-locked { border-color: var(--gold); color: #2f2315; background: var(--gold); }
 .deck-manager { max-height: 120px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 3px; overflow: auto; }
 .deck-chip { min-width: 0; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 2px 7px; padding: 7px; border: 1px solid #554761; color: var(--paper); background: #282131; text-align: left; cursor: pointer; }
 .deck-chip > span { grid-row: span 3; place-self: center; width: 30px; height: 30px; border: 1px solid #493b52; background-color: #18131f; background-clip: padding-box; transform-origin: center; filter: hue-rotate(var(--sprite-hue, 0deg)) drop-shadow(2px 2px 0 rgba(0,0,0,.3)); }
@@ -962,6 +971,46 @@ button { -webkit-tap-highlight-color: transparent; }
 .empty-shop { grid-column: 1 / -1; padding: 24px; border: 1px dashed var(--line); color: var(--muted); text-align: center; }
 #shopMessage[data-tone="error"] { color: var(--danger); }
 #shopMessage[data-tone="success"] { color: var(--eat); }
+
+.unlocked-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.unlocked-modes[hidden] { display: none; }
+.mode-button { min-width: 0; min-height: 58px; display: grid; gap: 5px; padding: 9px 10px; border: 2px solid #776384; color: var(--paper); background: #2a2235; box-shadow: 3px 3px 0 #09070d; text-align: left; cursor: pointer; }
+.mode-button b { color: var(--gold); font-size: 10px; }
+.mode-button small { color: #b8a9c2; font-size: 7px; line-height: 1.5; }
+.mode-button.endless-mode-button { border-color: #5f8b79; background: #1d302b; }
+.mode-button.hard-mode-button { border-color: #9b5665; background: #38212a; }
+
+.game-menu-panel { width: min(560px, 100%); }
+.menu-mode-label { margin: 4px 0 11px; padding: 8px 10px; border-left: 4px solid var(--gold); color: var(--gold); background: #17121f; font-size: 9px; font-weight: 900; }
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.setting-toggle, .menu-wide-button { min-width: 0; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 2px solid #6b5878; color: var(--paper); background: #2b2337; box-shadow: 3px 3px 0 #09070d; cursor: pointer; text-align: left; }
+.setting-toggle b { color: var(--eat); }
+.setting-toggle.is-off b { color: var(--danger); }
+.font-size-setting { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; margin: 10px 0; padding: 10px 12px; border: 1px solid #584963; background: #1a1522; }
+.font-size-setting > span { display: grid; gap: 4px; }
+.font-size-setting small, .menu-wide-button small { color: var(--muted); font-size: 7px; line-height: 1.4; }
+.font-size-setting > div { display: flex; gap: 4px; }
+.font-size-setting button { min-width: 47px; min-height: 34px; border: 1px solid #6e5b7a; color: #b9a8c3; background: #282031; cursor: pointer; }
+.font-size-setting button.is-selected { border-color: var(--gold); color: #2f2315; background: var(--gold); font-weight: 900; }
+.menu-wide-button { width: 100%; margin-top: 8px; flex-wrap: wrap; }
+.game-menu-panel .primary-button { margin-top: 13px; }
+
+.catalog-panel { width: min(940px, 100%); height: min(760px, 100%); display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
+.catalog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.catalog-heading h1 { margin-bottom: 3px; }
+.catalog-tools { display: flex; align-items: center; gap: 8px; margin: 7px 0 11px; padding: 8px 10px; border: 1px solid #594a64; background: #17121f; }
+.catalog-tools label, .catalog-tools span { color: #b9a8c3; font-size: 8px; }
+.catalog-tools span { margin-left: auto; color: var(--gold); font-weight: 900; }
+.catalog-tools select { min-height: 32px; padding: 5px 28px 5px 8px; border: 1px solid #796487; color: var(--paper); background: #2a2234; }
+.catalog-grid { min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: start; gap: 8px; padding: 3px 6px 14px 3px; overflow: auto; }
+.catalog-grid .deck-status-card { min-height: 110px; grid-template-columns: 58px minmax(0, 1fr); }
+.catalog-grid .deck-status-art { width: 54px; height: 54px; }
+
+html { --ui-copy-step: 0px; }
+html[data-font-size="small"] { --ui-copy-step: -1px; }
+html[data-font-size="large"] { --ui-copy-step: 2px; }
+:is(.modal-lead, .card-effect, .shop-card-copy em, .shop-card-copy i, .shop-item-card em, .deck-status-copy i, .collection-status-card em, .quest-block span, .quest-reward, .story-dialog > p) { font-size: max(6px, calc(8px + var(--ui-copy-step))); }
+:is(.primary-button, .secondary-button, .shop-reroll-button, .shop-lock-button, .setting-toggle, .menu-wide-button, .mode-button) { font-size: max(8px, calc(10px + var(--ui-copy-step))); }
 
 .score-floater { position: absolute; z-index: 35; left: 50%; top: 44%; color: var(--gold); text-shadow: 3px 3px 0 #0b0911; font-size: 25px; font-weight: 900; pointer-events: none; animation: scoreFloat 700ms steps(7, end) forwards; }
 .score-floater.eat { color: var(--eat); }
@@ -1050,6 +1099,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .welcome-panel { padding: 18px 14px; }
   .welcome-logo { width: 56px; height: 56px; margin-bottom: 10px; }
   .welcome-actions { grid-template-columns: 1fr; gap: 7px; }
+  .unlocked-modes { grid-template-columns: 1fr; }
   .welcome-loop { grid-template-columns: 1fr; }
   .welcome-legend { margin-top: 10px; }
   .story-guide {
@@ -1091,6 +1141,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .shop-panel-inner { padding: 12px 11px; }
   .shop-reroll-row { align-items: stretch; flex-direction: column; }
   .shop-reroll-row small { text-align: left; }
+  .shop-lock-button { width: 100%; min-width: 0; }
   .plate-upgrade-row { align-items: stretch; flex-direction: column; }
   .plate-upgrade-row .shop-reroll-button { min-width: 0; }
   .deck-manager { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 170px; }
@@ -1105,6 +1156,15 @@ button { -webkit-tap-highlight-color: transparent; }
   .collection-status-panel { height: 100%; padding: 14px 12px; }
   .collection-status-list { grid-template-columns: 1fr; }
   .collection-status-summary { align-items: flex-start; flex-direction: column; }
+  .game-menu-panel { width: 100%; }
+  .settings-grid, .font-size-setting { grid-template-columns: 1fr; }
+  .font-size-setting > div { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .font-size-setting button { min-width: 0; }
+  .catalog-panel { width: 100%; height: 100%; padding: 12px 10px; }
+  .catalog-heading .shop-reroll-button { min-width: 96px; }
+  .catalog-grid { grid-template-columns: 1fr; }
+  .catalog-tools { flex-wrap: wrap; }
+  .catalog-tools span { width: 100%; margin-left: 0; }
   .shop-plate-summary { align-items: flex-start; flex-direction: column; gap: 4px; }
   .delete-confirm-card { grid-template-columns: 58px 1fr; }
   .delete-confirm-card .game-sprite { width: 54px; height: 54px; }

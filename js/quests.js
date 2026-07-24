@@ -1,5 +1,4 @@
 import { GAME_CONFIG } from "./config.js";
-import { getCardById } from "./data.js";
 import { addItem, getItemById } from "./items.js";
 import { safeMultiply } from "./numbers.js";
 
@@ -87,7 +86,33 @@ export const QUEST_LIBRARY = Object.freeze([
   }, 7),
 ]);
 
-const QUEST_TARGETS = Object.freeze({ 3: 25, 6: 90, 9: 300, 12: 1000 });
+const QUEST_TARGETS = Object.freeze({ 4: 24, 8: 48, 12: 84 });
+
+const VOID_CARD = Object.freeze({
+  id: "Q001",
+  name: "虚空",
+  flavor: "它不属于任何类别，也不会响应任何流派。",
+  rarity: "诅咒",
+  type: "无类别",
+  edibility: "inedible",
+  eat_points: -2,
+  discard_points: -1,
+  base_eat_points: -2,
+  base_discard_points: -1,
+  role: "sacrifice",
+  shop_price: 0,
+  synergy_tags: [],
+  effect: null,
+  art_file: "cards/v017/c008-v3.png",
+  runtime_art_mode: "individual",
+  runtime_atlas: null,
+  runtime_columns: 1,
+  runtime_rows: 1,
+  runtime_x: 0,
+  runtime_y: 0,
+  sprite_hue: 0,
+  sprite_scale: 1,
+});
 
 function cloneQuest(source) {
   return source ? {
@@ -99,13 +124,30 @@ function cloneQuest(source) {
 }
 
 export function getQuestTarget(round, multiplier = 1) {
-  const base = QUEST_TARGETS[round] ?? Math.max(30, Math.round(30 * Math.pow(2.05, Math.max(0, round - 3) / 3)));
+  const base = QUEST_TARGETS[round] ?? Math.max(24, Math.round(24 * Math.pow(2, Math.max(0, round - 4) / 4)));
   return safeMultiply(base, multiplier);
 }
 
 export function isQuestEligible(entry, state) {
   if ((entry.min_round ?? 1) > state.current_round) return false;
   if (entry.requires_item && !state.items.some((item) => item.id === entry.requires_item)) return false;
+  const actionBudget = Math.min(state.deck.length, state.plate_capacity ?? GAME_CONFIG.initial_plate_capacity);
+  if (entry.condition.kind === "min_discard" && actionBudget < entry.condition.count) return false;
+  if (entry.condition.kind === "alternating_actions" && actionBudget < entry.condition.count) return false;
+  if (entry.condition.kind === "min_deck_and_score" && state.deck.length < entry.condition.count) return false;
+  if (entry.condition.kind === "min_unique_action_types" && new Set(state.deck.map((card) => card.type)).size < entry.condition.count) return false;
+  if (entry.condition.kind === "min_negative_eat" && state.deck.filter((card) => card.eat_points < 0).length < entry.condition.count) return false;
+  if (entry.condition.kind === "min_destroyed") {
+    const destroyCards = state.deck.filter((card) => card.effect?.description?.includes("摧毁")).length;
+    if (destroyCards < entry.condition.count) return false;
+  }
+  if (entry.condition.kind === "min_generated") {
+    const generationCapacity = state.deck.reduce((sum, card) => {
+      if (!card.effect?.description?.includes("生成")) return sum;
+      return sum + Math.max(1, card.effect.count ?? 1);
+    }, 0);
+    if (generationCapacity < entry.condition.count) return false;
+  }
   return !state.quest_history.some((history) => history.id === entry.id);
 }
 
@@ -119,8 +161,7 @@ export function randomDraftQuests(count, state, random = Math.random) {
 }
 
 function addPermanentVoidCards(state, count, createId) {
-  const source = getCardById("Q001");
-  if (!source) return 0;
+  const source = VOID_CARD;
   let added = 0;
   while (added < count && state.deck.length < GAME_CONFIG.max_deck_size) {
     state.deck.push({ ...source, effect: null, uuid: createId(source, state.deck.length + added) });
@@ -156,7 +197,7 @@ export function applyQuestRoundPenalty(state, random = Math.random) {
     state.round.quest_first_action_modifier = entry.penalty.amount;
   }
   if (entry.penalty.kind === "void_round_cards") {
-    const voidCard = getCardById("Q001");
+    const voidCard = VOID_CARD;
     const available = state.round.draw_pile.map((_, index) => index);
     const count = Math.min(entry.penalty.count, available.length);
     for (let picked = 0; picked < count; picked += 1) {
@@ -209,7 +250,7 @@ function evaluateQuest(state, entry, result) {
 }
 
 function queueReward(state, entry) {
-  const effectiveRound = Math.min(GAME_CONFIG.total_rounds, state.current_round + 1);
+  const effectiveRound = state.current_round + 1;
   if (entry.reward.kind === "item") {
     const reward = getItemById(entry.reward.item_id);
     const exists = state.items.some((item) => item.id === entry.reward.item_id)

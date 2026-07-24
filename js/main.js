@@ -1,4 +1,4 @@
-import { GAME_CONFIG } from "./config.js";
+import { GAME_CONFIG, GAME_MODES, isFreeRemovalRound, isQuestRound } from "./config.js";
 import { GAME_PHASES, createInitialPlayerState, resetRoundState, transitionPhase } from "./state.js";
 import { createGestureController } from "./gesture.js";
 import { createRoundEngine } from "./engine.js";
@@ -11,6 +11,13 @@ import { initAudio, playSound, toggleBGM } from "./audio.js";
 import { safeAdd } from "./numbers.js";
 import { postponeCurrentCard, takeRoundDrawPile } from "./plate.js";
 import { activateReshuffle, getReshuffleStatus } from "./reshuffle.js";
+import {
+  activatePendingQuestRewards,
+  applyQuestRoundPenalty,
+  finalizeQuest,
+  randomDraftQuests,
+  selectQuest,
+} from "./quests.js";
 
 const state = createInitialPlayerState({ create_id: browserPlatform.create_id });
 const engine = createRoundEngine({ random: browserPlatform.random });
@@ -23,7 +30,9 @@ let shopThemeType = null;
 let shopItemBuffer = null;
 let actionLocked = true;
 let streak = { action: null, count: 0 };
-let soundEnabled = true;
+let settings = browserPlatform.load_settings();
+let musicEnabled = settings.music;
+let effectsEnabled = settings.effects;
 let bgmStarted = false;
 const tutorial = {
   active: false,
@@ -42,9 +51,9 @@ const shuffle = (items) => {
 };
 
 function startSound() {
-  if (!soundEnabled) return;
+  if (!musicEnabled && !effectsEnabled) return;
   initAudio();
-  if (!bgmStarted) {
+  if (musicEnabled && !bgmStarted) {
     toggleBGM(true);
     bgmStarted = true;
   }
@@ -173,7 +182,7 @@ function completeRound() {
   result.gold_eaten = new Set(state.round.eat_sequence.map((entry) => entry.card_uuid)).size;
   state.gold = safeAdd(state.gold, result.gold_reward);
   result.breakdown.splice(-1, 0, { label: "基础金币（每张实体牌每轮首次吃 +1）", text: `+${result.gold_reward}`, kind: "bonus" });
-  result.quest_result = null;
+  result.quest_result = finalizeQuest(state, result);
   result.round_end_item_results = applyRoundEndItems(state, { random: browserPlatform.random });
   result.round_end_item_results.forEach((message) => {
     result.breakdown.splice(-1, 0, { label: "道具 · 轮末变化", text: message, kind: "rule" });
@@ -182,8 +191,22 @@ function completeRound() {
 
   const milestone = engine.levelProgressCheck(state);
   const failed = milestone.target > 0 && !milestone.passed;
-  const won = !failed && state.current_round >= engine.getFinalRound(state);
+  const won = state.mode !== GAME_MODES.ENDLESS && !failed && state.current_round >= engine.getFinalRound(state);
   const outcome = failed ? "defeat" : won ? "victory" : null;
+
+  if (!outcome && isFreeRemovalRound(state.current_round)) {
+    state.free_card_removals = safeAdd(state.free_card_removals, 1);
+    result.breakdown.splice(-1, 0, {
+      label: "五轮赠礼",
+      text: `免费删牌 +1 · 当前 ${state.free_card_removals}`,
+      kind: "bonus",
+    });
+  }
+  const endlessGateRound = GAME_CONFIG.total_rounds + (state.milestone_delays?.[GAME_CONFIG.total_rounds] ?? 0);
+  if (!outcome && state.mode === GAME_MODES.ENDLESS && state.current_round === endlessGateRound) {
+    state.endless_started = true;
+    result.endless_started = true;
+  }
 
   if (outcome) {
     state.outcome = outcome;
@@ -192,6 +215,7 @@ function completeRound() {
       score: state.total_score,
       outcome,
       round: state.current_round,
+      mode: state.mode,
       finished_at: new Date().toISOString(),
       schema_version: state.schema_version,
     });
@@ -292,14 +316,14 @@ function handleAction(action, card) {
   if (entry.fruit_combo) ui.showFruitCombo(entry.fruit_combo);
   if (entry.effect_triggered) ui.showEffectFlash(entry.effect_triggered, entry);
   ui.showPointMutation(entry, card);
-  if (soundEnabled) {
+  if (effectsEnabled) {
     playSound(action, hitCount);
     if (entry.effect_triggered) playSound("effect", hitCount);
   }
   browserPlatform.vibrate(entry.points < 0 ? [16, 20, 16] : 7);
   if (entry.points < 0) {
     ui.triggerShake();
-    if (soundEnabled) playSound("error", 1);
+    if (effectsEnabled) playSound("error", 1);
   }
 
   if (state.round.actions.length >= GAME_CONFIG.max_actions_per_round) {
@@ -351,7 +375,7 @@ function handlePostpone(card) {
   effectMessages.push(...effectResult.messages);
   ui.showEffectFlash(effectMessages.join(" · "));
   if (tutorial.active) tutorial.postponed = true;
-  if (soundEnabled) playSound("effect", 1);
+  if (effectsEnabled) playSound("effect", 1);
   actionLocked = false;
   refreshTable();
   renderTutorial();
@@ -368,6 +392,8 @@ const gesture = createGestureController({
 function prepareRound() {
   resetRoundState(state);
   const roundStartMessages = engine.applyRoundStartEffects(state);
+  const activatedRewards = activatePendingQuestRewards(state);
+  if (activatedRewards.length > 0) roundStartMessages.push(`高级任务奖励生效：${activatedRewards.join("、")}`);
   applyRoundItemSetup(state);
   state.deck.forEach((card) => {
     if ((card.dormant_until_round ?? Number.POSITIVE_INFINITY) >= state.current_round) return;
@@ -379,10 +405,13 @@ function prepareRound() {
   if (dormantCount > 0) roundStartMessages.push(`【休眠】${dormantCount} 张新购入牌本轮不进入牌堆`);
   const shuffledDeck = shuffle(activeDeck.map((card) => ({ ...card, effect: card.effect ? { ...card.effect } : null })));
   Object.assign(state.round, takeRoundDrawPile(shuffledDeck, state.plate_capacity));
-  shopBuffer = null;
-  shopThemeBuffer = null;
-  shopThemeType = null;
-  shopItemBuffer = null;
+  applyQuestRoundPenalty(state, browserPlatform.random);
+  if (!state.shop_lock_carry) {
+    shopBuffer = null;
+    shopThemeBuffer = null;
+    shopThemeType = null;
+    shopItemBuffer = null;
+  }
   streak = { action: null, count: 0 };
   actionLocked = true;
   ui.renderTimer(0);
@@ -397,6 +426,23 @@ function prepareRound() {
   });
 }
 
+function enterQuestOrPrepareRound() {
+  if (!isQuestRound(state.current_round, state.mode)) {
+    state.active_quest = null;
+    prepareRound();
+    return;
+  }
+  transitionPhase(state, GAME_PHASES.QUEST_DRAFT, { round: state.current_round });
+  const options = randomDraftQuests(GAME_CONFIG.draft_size, state, browserPlatform.random);
+  ui.renderHud(state);
+  ui.openQuestDraft(options, state, (quest) => {
+    if (state.phase !== GAME_PHASES.QUEST_DRAFT) return;
+    selectQuest(state, quest, browserPlatform.create_id);
+    ui.closeQuestDraft();
+    prepareRound();
+  });
+}
+
 function enterRuleDraft() {
   if (state.phase === GAME_PHASES.INIT || state.phase === GAME_PHASES.NEXT_ROUND) {
     transitionPhase(state, GAME_PHASES.RULE_DRAFT, { round: state.current_round });
@@ -404,7 +450,7 @@ function enterRuleDraft() {
   actionLocked = true;
   if (state.active_rules.length > 0) {
     ui.renderHud(state);
-    prepareRound();
+    enterQuestOrPrepareRound();
     return;
   }
   const options = randomDraftRules(
@@ -426,7 +472,7 @@ function enterRuleDraft() {
       completed_round: null,
     });
     ui.closeRuleDraft();
-    prepareRound();
+    enterQuestOrPrepareRound();
   });
   renderTutorial();
 }
@@ -441,6 +487,8 @@ function enterShop() {
     shopThemeType = themed.type;
   } else shopThemeBuffer = shopService.repriceShopCards(state, shopThemeBuffer);
   if (shopItemBuffer === null) shopItemBuffer = shopService.getShopItems(state);
+  const arrivedWithLockedShop = state.shop_lock_carry;
+  if (arrivedWithLockedShop) state.shop_lock_carry = false;
   shopService.applyOpeningPriceOverride(state, [shopBuffer, shopThemeBuffer]);
   ui.openShop(
     state,
@@ -460,7 +508,6 @@ function enterShop() {
         const message = {
           insufficient_gold: `金币不足：需要 ${item.shop_price}，当前 ${state.gold}。`,
           deck_full: `牌组已达 ${GAME_CONFIG.max_deck_size} 张上限，先删除一张牌。`,
-          copy_limit: `「${item.name}」已达到本局持有上限。`,
           missing_card: "商品数据已失效，请刷新商店。",
           invalid_offer: "商品价格异常，请刷新商店。",
         }[status.reason] ?? "购买失败，请刷新后重试。";
@@ -522,13 +569,26 @@ function enterShop() {
       enterShop();
     },
     () => {
+      state.shop_lock_requested = !state.shop_lock_requested;
+      ui.setShopMessage(
+        state.shop_lock_requested
+          ? "已锁定：结束本商店后，下一轮商店保留当前商品与道具。"
+          : "已取消锁定：下一轮商店将正常刷新。",
+        state.shop_lock_requested ? "success" : "normal",
+      );
+      enterShop();
+    },
+    () => {
       if (state.phase !== GAME_PHASES.SHOP) return;
+      state.shop_lock_carry = state.shop_lock_requested;
+      state.shop_lock_requested = false;
       ui.closeShop();
       transitionPhase(state, GAME_PHASES.NEXT_ROUND, { round: state.current_round });
       state.current_round += 1;
       enterRuleDraft();
     },
     shopService.getPlateUpgradeStatus(state),
+    arrivedWithLockedShop,
   );
 }
 
@@ -541,9 +601,14 @@ ui.bindControls({
   onEat: () => tryCommit("eat"),
   onDiscard: () => tryCommit("discard"),
   onPostpone: () => tryCommit("postpone"),
-  onSound: () => {
-    soundEnabled = !soundEnabled;
-    if (soundEnabled) {
+  onMenu: () => ui.openMenu(state, settings),
+});
+
+ui.bindMenu({
+  onMusic: (enabled) => {
+    musicEnabled = enabled;
+    settings = browserPlatform.save_settings({ ...settings, music: enabled });
+    if (enabled) {
       startSound();
       toggleBGM(true);
       bgmStarted = true;
@@ -551,7 +616,18 @@ ui.bindControls({
       toggleBGM(false);
       bgmStarted = false;
     }
-    ui.setSoundState(soundEnabled);
+    ui.renderSettings(settings);
+  },
+  onEffects: (enabled) => {
+    effectsEnabled = enabled;
+    settings = browserPlatform.save_settings({ ...settings, effects: enabled });
+    if (enabled) initAudio();
+    ui.renderSettings(settings);
+  },
+  onFontSize: (fontSize) => {
+    settings = browserPlatform.save_settings({ ...settings, font_size: fontSize });
+    ui.applyFontSize(fontSize);
+    ui.renderSettings(settings);
   },
 });
 
@@ -575,9 +651,11 @@ function tickTimer() {
 }
 
 window.addEventListener("pagehide", () => gesture.destroy(), { once: true });
-ui.setSoundState(soundEnabled);
+ui.applyFontSize(settings.font_size);
+ui.renderSettings(settings);
 requestAnimationFrame(tickTimer);
-const launchGame = (withTutorial) => {
+const launchGame = (withTutorial, mode = GAME_MODES.NORMAL) => {
+  state.mode = mode;
   startSound();
   if (withTutorial) startTutorial();
   else ui.hideStoryGuide();
@@ -585,8 +663,13 @@ const launchGame = (withTutorial) => {
 };
 
 ui.openWelcome(
-  () => launchGame(false),
-  () => launchGame(true),
+  {
+    onNormal: () => launchGame(false, GAME_MODES.NORMAL),
+    onTutorial: () => launchGame(true, GAME_MODES.NORMAL),
+    onEndless: () => launchGame(false, GAME_MODES.ENDLESS),
+    onHard: () => launchGame(false, GAME_MODES.HARD),
+  },
   browserPlatform.load_records()[0]?.score ?? null,
   browserPlatform.load_tutorial_complete(),
+  browserPlatform.has_completed_run(),
 );

@@ -1,9 +1,9 @@
-import { GAME_CONFIG, getFinalRound, getNextMilestone } from "./config.js";
+import { GAME_CONFIG, GAME_MODES, getFinalRound, getNextMilestone } from "./config.js";
 import { getItemById } from "./items.js";
 import { formatScore } from "./numbers.js";
 import { getQuestRequirement, getQuestTarget } from "./quests.js";
 import { KEYWORD_LIBRARY } from "./keywords.js";
-import { getCardById } from "./data.js";
+import { createShopCardPool, getCardById } from "./data.js";
 import { getPlateSummary } from "./plate.js";
 import { getReshuffleStatus } from "./reshuffle.js";
 import { getRuleUnlockRound } from "./rules.js";
@@ -18,6 +18,7 @@ const EDIBILITY_LABEL = Object.freeze({ edible: "可食用", inedible: "不可�
 const ROLE_LABEL = Object.freeze({ baseline: "基础", setup: "启动", payoff: "收割", sacrifice: "牺牲", engine: "成长引擎", economy: "经济" });
 const CARD_ART_VERSION = 14;
 const CARD_ATLAS_VERSION = 10;
+const MODE_LABELS = Object.freeze({ normal: "普通模式", endless: "无尽模式", hard: "高难模式" });
 const cardArtCache = new Map();
 const freshArtClass = (card) => card.art_file?.includes("-v2.") ? " art-outlined" : "";
 const signed = (value) => value > 0 ? `+${formatScore(value)}` : formatScore(value);
@@ -159,7 +160,7 @@ function questElement(entry, state, onChoose) {
     <span class="quest-card-head"><i class="quest-card-icon meta-sprite" style="${metaStyle(entry)}"></i><span><small>${entry.risk}</small><strong>${entry.name}</strong></span></span>
     <span class="quest-block quest-penalty"><b>代价</b><span>${entry.penalty.description}</span></span>
     <span class="quest-block quest-requirement"><b>本轮要求</b><span>${getQuestRequirement(displayQuest)}</span></span>
-    <span class="quest-reward">永久奖励 · ${reward ? `${reward.name}：${reward.description}` : entry.reward.name}</span>
+    <span class="quest-reward">高级道具奖励 · ${reward ? `${reward.name}：${reward.description}` : entry.reward.name}</span>
   `;
   button.addEventListener("click", () => onChoose(entry), { once: true });
   return button;
@@ -283,9 +284,26 @@ export function createUI(root) {
     ruleStatus: get("#ruleStatus"), ruleInfoButton: get("#ruleInfoButton"),
     itemStatus: get("#itemStatus"), itemInfoButton: get("#itemInfoButton"),
     storyGuide: get("#storyGuide"), tutorialInfoButton: get("#tutorialInfoButton"),
+    gameMenu: get("#gameMenu"), menuButton: get("#menuButton"),
+    cardCatalog: get("#cardCatalog"), catalogList: get("#catalogList"),
   };
 
   let tutorialFocus = null;
+  let menuState = null;
+  let menuSettings = null;
+  let storySuspendedByMenu = false;
+
+  function suspendStoryForMenu() {
+    if (!nodes.storyGuide?.hidden) {
+      storySuspendedByMenu = true;
+      nodes.storyGuide.hidden = true;
+    }
+  }
+
+  function resumeStoryAfterMenu() {
+    if (storySuspendedByMenu && nodes.storyGuide) nodes.storyGuide.hidden = false;
+    storySuspendedByMenu = false;
+  }
 
   function clearTutorialFocus() {
     tutorialFocus?.classList.remove("tutorial-focus");
@@ -355,6 +373,9 @@ export function createUI(root) {
     nodes.deckStatus?.classList.remove("show");
     nodes.ruleStatus?.classList.remove("show");
     nodes.itemStatus?.classList.remove("show");
+    nodes.gameMenu?.classList.remove("show");
+    nodes.cardCatalog?.classList.remove("show");
+    resumeStoryAfterMenu();
   });
 
   function openDeckStatus(state) {
@@ -412,7 +433,7 @@ export function createUI(root) {
     } else {
       setText(title, "任务记录");
       content.innerHTML = state.quest_history.length === 0
-        ? '<p class="quest-status-empty">本轮没有危险任务。任务会在第 3 / 6 / 9 / 12 轮出现。</p>'
+        ? '<p class="quest-status-empty">当前没有危险任务。高难模式会在第 4 / 8 / 12 轮强制三选一。</p>'
         : `<ul class="quest-history-list">${state.quest_history.map((history) => `<li class="${history.completed ? "success" : "failed"}"><b>${history.completed ? "✓" : "×"} ${history.name}</b><span>第 ${history.round} 轮 · ${history.reward}</span></li>`).join("")}</ul>`;
     }
     nodes.deckStatus?.classList.remove("show");
@@ -453,7 +474,10 @@ export function createUI(root) {
   }
 
   function renderHud(state) {
-    setText(nodes.round, `${state.current_round}/${getFinalRound(state.milestone_delays)}`);
+    const roundLimit = state.mode === GAME_MODES.ENDLESS && state.current_round > GAME_CONFIG.total_rounds
+      ? "∞"
+      : getFinalRound(state.milestone_delays, state.mode === GAME_MODES.ENDLESS ? GAME_MODES.NORMAL : state.mode);
+    setText(nodes.round, `${state.current_round}/${roundLimit}`);
     setText(nodes.score, formatScore(state.total_score));
     nodes.score.title = String(state.total_score);
     setText(nodes.gold, formatScore(state.gold));
@@ -466,10 +490,11 @@ export function createUI(root) {
     nodes.remaining.title = `${liveRound ? "本轮" : "下轮预计"}登场 ${budget} 张；永久牌组 ${state.deck.length} 张`;
     setText(nodes.phase, PHASE_LABELS[state.phase] ?? state.phase);
     setText(get("#shopGold"), formatScore(state.gold));
-    const removeCardCost = (state.round.shop_free_removals ?? 0) > 0 ? 0 : state.remove_card_cost;
+    const removeCardCost = (state.round.shop_free_removals ?? 0) > 0 || (state.free_card_removals ?? 0) > 0 ? 0 : state.remove_card_cost;
     setText(get("#shopDeleteCost"), removeCardCost);
     setText(get("#reshuffleCount"), state.round.reshuffle_charges);
     if (nodes.questInfoButton) {
+      nodes.questInfoButton.hidden = state.mode !== GAME_MODES.HARD;
       nodes.questInfoButton.disabled = !state.active_quest && state.quest_history.length === 0;
       nodes.questInfoButton.classList.toggle("has-active-quest", Boolean(state.active_quest && !state.active_quest.finalized));
       nodes.questInfoButton.title = state.active_quest
@@ -543,7 +568,7 @@ export function createUI(root) {
 
   return {
     preloadCardArt: warmCardArt,
-    openWelcome(onStart, onTutorial, bestScore = null, tutorialComplete = false) {
+    openWelcome(callbacks, bestScore = null, tutorialComplete = false, modesUnlocked = false) {
       setText(get("#welcomeBestScore"), bestScore ?? "--");
       const start = get("#startGameButton");
       const tutorial = get("#tutorialStartButton");
@@ -554,14 +579,19 @@ export function createUI(root) {
       if (tutorialComplete) {
         start.textContent = "开始游戏";
         tutorial.textContent = "重玩故事教学";
-        start.onclick = () => launch(onStart);
-        tutorial.onclick = () => launch(onTutorial);
+        start.onclick = () => launch(callbacks.onNormal);
+        tutorial.onclick = () => launch(callbacks.onTutorial);
       } else {
         start.textContent = "开始故事教学";
         tutorial.textContent = "跳过教学 · 直接开始";
-        start.onclick = () => launch(onTutorial);
-        tutorial.onclick = () => launch(onStart);
+        start.onclick = () => launch(callbacks.onTutorial);
+        tutorial.onclick = () => launch(callbacks.onNormal);
       }
+      const unlockedModes = get("#unlockedModes");
+      unlockedModes.hidden = !modesUnlocked;
+      get("#modeUnlockHint").hidden = modesUnlocked;
+      get("#endlessStartButton").onclick = () => launch(callbacks.onEndless);
+      get("#hardStartButton").onclick = () => launch(callbacks.onHard);
       nodes.welcome.classList.add("show");
     },
     showStoryGuide,
@@ -583,10 +613,10 @@ export function createUI(root) {
       if (activeElement && activeCard) gesture.bind(activeElement, activeCard);
     },
     setGestureProgress,
-    bindControls({ onEat, onDiscard, onPostpone, onSound }) {
+    bindControls({ onEat, onDiscard, onPostpone, onMenu }) {
       get("#eatButton")?.addEventListener("click", onEat);
       get("#discardButton")?.addEventListener("click", onDiscard);
-      get("#soundButton")?.addEventListener("click", onSound);
+      nodes.menuButton?.addEventListener("click", onMenu);
       get("#postponeButton")?.addEventListener("click", onPostpone);
       get("#questStatusClose")?.addEventListener("click", () => nodes.questStatus?.classList.remove("show"));
       get("#deckStatusClose")?.addEventListener("click", () => nodes.deckStatus?.classList.remove("show"));
@@ -596,14 +626,72 @@ export function createUI(root) {
     bindTutorial({ onSkip, onContinue, onReplay }) {
       get("#storyGuideSkip")?.addEventListener("click", onSkip);
       get("#storyGuideNext")?.addEventListener("click", onContinue);
-      nodes.tutorialInfoButton?.addEventListener("click", onReplay);
+      nodes.tutorialInfoButton?.addEventListener("click", () => {
+        nodes.gameMenu?.classList.remove("show");
+        storySuspendedByMenu = false;
+        onReplay();
+      });
     },
-    setSoundState(enabled) {
-      const button = get("#soundButton");
-      if (!button) return;
-      button.textContent = enabled ? "♪" : "×";
-      button.setAttribute("aria-pressed", String(enabled));
-      button.classList.toggle("is-muted", !enabled);
+    openMenu(state, currentSettings) {
+      menuState = state;
+      menuSettings = currentSettings;
+      setText(get("#menuModeLabel"), MODE_LABELS[state.mode] ?? "普通模式");
+      this.renderSettings(currentSettings);
+      suspendStoryForMenu();
+      nodes.cardCatalog?.classList.remove("show");
+      nodes.gameMenu?.classList.add("show");
+    },
+    bindMenu({ onMusic, onEffects, onFontSize }) {
+      get("#gameMenuClose")?.addEventListener("click", () => {
+        nodes.gameMenu?.classList.remove("show");
+        resumeStoryAfterMenu();
+      });
+      get("#musicToggle")?.addEventListener("click", () => onMusic(get("#musicToggle")?.getAttribute("aria-pressed") !== "true"));
+      get("#effectsToggle")?.addEventListener("click", () => onEffects(get("#effectsToggle")?.getAttribute("aria-pressed") !== "true"));
+      root.querySelectorAll("[data-font-size]").forEach((button) => {
+        button.addEventListener("click", () => onFontSize(button.dataset.fontSize));
+      });
+      get("#cardCatalogButton")?.addEventListener("click", () => {
+        nodes.gameMenu?.classList.remove("show");
+        const allCards = createShopCardPool();
+        const filter = get("#catalogTypeFilter");
+        const types = [...new Set(allCards.map((card) => card.type))].sort((a, b) => a.localeCompare(b, "zh-CN"));
+        filter.innerHTML = '<option value="all">全部类别</option>' + types.map((type) => `<option value="${type}">${type}</option>`).join("");
+        const renderCatalog = () => {
+          const cards = filter.value === "all" ? allCards : allCards.filter((card) => card.type === filter.value);
+          setText(get("#catalogSummary"), `${cards.length} 张卡牌`);
+          nodes.catalogList.replaceChildren(...cards.map((card) => deckStatusCardElement(card, 1)));
+        };
+        filter.onchange = renderCatalog;
+        renderCatalog();
+        nodes.cardCatalog?.classList.add("show");
+      });
+      get("#cardCatalogClose")?.addEventListener("click", () => {
+        nodes.cardCatalog?.classList.remove("show");
+        if (menuState) {
+          setText(get("#menuModeLabel"), MODE_LABELS[menuState.mode] ?? "普通模式");
+          nodes.gameMenu?.classList.add("show");
+        }
+      });
+    },
+    applyFontSize(fontSize) {
+      root.documentElement.dataset.fontSize = ["small", "medium", "large"].includes(fontSize) ? fontSize : "medium";
+    },
+    renderSettings(currentSettings) {
+      menuSettings = currentSettings;
+      const updateToggle = (selector, enabled) => {
+        const button = get(selector);
+        button?.setAttribute("aria-pressed", String(enabled));
+        button?.classList.toggle("is-off", !enabled);
+        const label = button?.querySelector("b");
+        if (label) label.textContent = enabled ? "开启" : "关闭";
+      };
+      updateToggle("#musicToggle", currentSettings.music !== false);
+      updateToggle("#effectsToggle", currentSettings.effects !== false);
+      root.querySelectorAll("[data-font-size]").forEach((button) => {
+        button.classList.toggle("is-selected", button.dataset.fontSize === currentSettings.font_size);
+        button.setAttribute("aria-pressed", String(button.dataset.fontSize === currentSettings.font_size));
+      });
     },
     playReshuffleAnimation() {
       const stage = get(".deck-stage");
@@ -691,7 +779,16 @@ export function createUI(root) {
       shell?.classList.add("shake");
     },
     openRuleDraft(options, state, onChoose) {
-      const milestone = getNextMilestone(state.current_round, state.milestone_delays);
+      const milestone = getNextMilestone(state.current_round, state.milestone_delays, state.mode);
+      if (milestone.endless) {
+        setText(get("#draftRoundValue"), String(state.current_round).padStart(2, "0"));
+        setText(get("#draftTargetText"), "无尽模式 · 已通过全部累计分数门槛");
+        setText(get("#draftTargetProgress"), `当前 ${formatScore(state.total_score)} 分 · 继续构筑直到你主动离开`);
+        get("#draftTargetFill")?.style.setProperty("width", "100%");
+        nodes.draftList.replaceChildren(...options.map((rule) => ruleElement(rule, onChoose)));
+        nodes.draft.classList.add("show");
+        return;
+      }
       const scoreNeeded = Math.max(0, milestone.target - state.total_score);
       const roundsRemaining = Math.max(1, milestone.round - state.current_round + 1);
       const progress = milestone.target > 0 ? Math.max(0, Math.min(100, state.total_score / milestone.target * 100)) : 100;
@@ -733,17 +830,18 @@ export function createUI(root) {
       const button = get("#summaryContinueBtn");
       const list = get("#summaryBreakdownList");
       const ruleResults = get("#summaryRuleResults");
-      const milestone = getNextMilestone(state.current_round, state.milestone_delays);
-      const roundsRemaining = Math.max(0, milestone.round - state.current_round);
+      const milestone = getNextMilestone(state.current_round, state.milestone_delays, state.mode);
+      const roundsRemaining = milestone.round === null ? 0 : Math.max(0, milestone.round - state.current_round);
       const milestoneProgress = milestone.target > 0
         ? Math.max(0, Math.min(100, state.total_score / milestone.target * 100))
         : 100;
 
-      setText(
-        get("#summaryMilestoneRounds"),
-        roundsRemaining === 0 ? `本轮为第 ${milestone.round} 轮目标结算` : `距离第 ${milestone.round} 轮目标还有 ${roundsRemaining} 轮`,
-      );
-      setText(get("#summaryMilestoneScore"), `累计 ${formatScore(state.total_score)} / 目标 ${formatScore(milestone.target)} 分`);
+      setText(get("#summaryMilestoneRounds"), milestone.endless
+        ? "无尽模式 · 已无累计分数门槛"
+        : roundsRemaining === 0 ? `本轮为第 ${milestone.round} 轮目标结算` : `距离第 ${milestone.round} 轮目标还有 ${roundsRemaining} 轮`);
+      setText(get("#summaryMilestoneScore"), milestone.endless
+        ? `累计 ${formatScore(state.total_score)} 分 · 第 ${state.current_round} 轮`
+        : `累计 ${formatScore(state.total_score)} / 目标 ${formatScore(milestone.target)} 分`);
       get("#summaryMilestoneFill")?.style.setProperty("width", `${milestoneProgress}%`);
 
       list.innerHTML = result.breakdown.map((item) => `<div class="receipt-line ${item.kind ?? ""}"><span>${item.label}</span><b>${item.text}</b></div>`).join("");
@@ -772,13 +870,15 @@ export function createUI(root) {
       } else if (outcome === "defeat") {
         eyebrow.textContent = "TARGET MISSED";
         title.textContent = "挑战失败";
-        tip.textContent = `本阶段需要 ${formatScore(getNextMilestone(state.current_round, state.milestone_delays).target)} 分，当前为 ${formatScore(state.total_score)} 分。`;
+        tip.textContent = `本阶段需要 ${formatScore(getNextMilestone(state.current_round, state.milestone_delays, state.mode).target)} 分，当前为 ${formatScore(state.total_score)} 分。`;
         button.textContent = "重新开始";
         button.classList.add("danger-action");
       } else {
-        eyebrow.textContent = `ROUND ${String(state.current_round).padStart(2, "0")} CLEAR`;
-        title.textContent = "本轮结算";
-        tip.textContent = `用时 ${(state.round.elapsed_ms / 1000).toFixed(1)} 秒 · 吃牌动作 ${result.eat_actions} 次 · 计金实体牌 ${result.gold_eaten} 张 · 基础金币 +${result.gold_reward}`;
+        eyebrow.textContent = result.endless_started ? "ENDLESS MODE UNLOCKED" : `ROUND ${String(state.current_round).padStart(2, "0")} CLEAR`;
+        title.textContent = result.endless_started ? "进入无尽模式！" : "本轮结算";
+        tip.textContent = result.endless_started
+          ? `已通过 500 分目标；第 16 轮起不再设置累计分数门槛。当前总分 ${formatScore(state.total_score)}。`
+          : `用时 ${(state.round.elapsed_ms / 1000).toFixed(1)} 秒 · 吃牌动作 ${result.eat_actions} 次 · 计金实体牌 ${result.gold_eaten} 张 · 基础金币 +${result.gold_reward}`;
         button.textContent = "确认结算 · 进入商店";
         button.classList.remove("danger-action");
       }
@@ -799,9 +899,9 @@ export function createUI(root) {
       nodes.summary.classList.add("show");
     },
     hideRoundSummary() { nodes.summary.classList.remove("show"); },
-    openShop(state, cards, themedCards, themeType, itemOffers, onBuy, onBuyItem, onRemove, onPlateUpgrade, onReroll, onContinue, plateUpgradeStatus) {
+    openShop(state, cards, themedCards, themeType, itemOffers, onBuy, onBuyItem, onRemove, onPlateUpgrade, onReroll, onLock, onContinue, plateUpgradeStatus, arrivedWithLockedShop = false) {
       renderHud(state);
-      const removeCardCost = (state.round.shop_free_removals ?? 0) > 0 ? 0 : state.remove_card_cost;
+      const removeCardCost = (state.round.shop_free_removals ?? 0) > 0 || (state.free_card_removals ?? 0) > 0 ? 0 : state.remove_card_cost;
       const plate = getPlateSummary(state.deck.length, state.plate_capacity);
       get("#shopPlateSummary").innerHTML = `
         <span><b>${state.deck.length} 张牌</b> · 永久餐盘 <b>${state.plate_capacity}</b> 张 · 下轮登场 ${plate.action_budget} 张</span>
@@ -844,6 +944,13 @@ export function createUI(root) {
         : `刷新商品 · $${rerollCost}`;
       rerollButton.disabled = rerollCost > 0 && state.gold < rerollCost;
       rerollButton.onclick = onReroll;
+      const lockButton = get("#shopLock");
+      lockButton.classList.toggle("is-locked", state.shop_lock_requested);
+      lockButton.setAttribute("aria-pressed", String(state.shop_lock_requested));
+      lockButton.textContent = state.shop_lock_requested ? "◆ 已锁定下轮商店" : "◇ 锁定下轮商店";
+      lockButton.onclick = onLock;
+      lockButton.title = "锁定后，下一轮商店保留当前未购买的卡牌、同类专柜与道具；价格会按当时优惠重新计算。";
+      if (arrivedWithLockedShop) setText(get("#shopMessage"), "商店锁定已生效：本轮保留了上一间商店的商品。");
       get("#shopContinue").onclick = onContinue;
       nodes.shop.classList.add("show");
     },

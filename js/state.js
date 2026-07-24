@@ -1,4 +1,4 @@
-import { GAME_CONFIG } from "./config.js";
+import { GAME_CONFIG, GAME_MODES } from "./config.js";
 import { createInitialDeck } from "./data.js";
 
 export const GAME_PHASES = Object.freeze({
@@ -101,6 +101,7 @@ export function createInitialPlayerState(options = {}) {
   return {
     schema_version: GAME_CONFIG.schema_version,
     phase: GAME_PHASES.INIT,
+    mode: options.mode ?? GAME_MODES.NORMAL,
     current_round: 1,
     total_score: 0,
     gold: 0,
@@ -119,6 +120,10 @@ export function createInitialPlayerState(options = {}) {
     permanent_multipliers: [],
     remove_card_cost: 0,
     remove_count: 0,
+    free_card_removals: 0,
+    shop_lock_requested: false,
+    shop_lock_carry: false,
+    endless_started: false,
     last_shop_transaction: null,
     outcome: null,
     phase_history: [],
