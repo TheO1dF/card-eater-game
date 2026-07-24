@@ -502,6 +502,21 @@ for (const viewport of selectedViewports) {
       shop_still_open: document.querySelector("#shopPanel")?.classList.contains("show"),
       locked_while_menu_open: document.querySelector("#shopLock")?.getAttribute("aria-pressed"),
     }))()`);
+    await clickElement("#cardCatalogButton");
+    await waitFor('document.querySelector("#cardCatalog")?.classList.contains("show")');
+    await wait(180);
+    Object.assign(deleteConfirmation.shop_menu, await evaluate(`(() => ({
+      catalog_visible: document.querySelector("#cardCatalog")?.classList.contains("show"),
+      catalog_z: Number.parseInt(getComputedStyle(document.querySelector("#cardCatalog")).zIndex, 10),
+      menu_hidden_behind_catalog: !document.querySelector("#gameMenu")?.classList.contains("show"),
+      shop_open_behind_catalog: document.querySelector("#shopPanel")?.classList.contains("show"),
+      catalog_card_count: document.querySelectorAll("#catalogList .deck-status-card").length,
+      catalog_is_visual_top_layer: document.querySelector("#cardCatalog")?.contains(document.elementFromPoint(innerWidth / 2, innerHeight / 2)),
+    }))()`));
+    await capture(`${viewport.name}-shop-catalog`);
+    await clickElement("#cardCatalogClose");
+    await waitFor('document.querySelector("#gameMenu")?.classList.contains("show")');
+    deleteConfirmation.shop_menu.menu_restored_after_catalog = true;
     await clickElement("#gameMenuClose");
     await waitFor('!document.querySelector("#gameMenu")?.classList.contains("show")');
     Object.assign(deleteConfirmation.shop_menu, await evaluate(`(() => ({
@@ -797,6 +812,8 @@ for (const report of reports) {
   fail(report.shop_panel_inside_viewport === true, "缩小后的商店仍横向溢出");
   fail(report.shop_menu?.menu_visible === true && report.shop_menu?.menu_z > report.shop_menu?.shop_z, "商店期间菜单没有显示在商店上方");
   fail(report.shop_menu?.shop_still_open === true && report.shop_menu?.shop_visible_after_close === true && report.shop_menu?.locked_while_menu_open === report.shop_menu?.locked_after_close, "打开或关闭菜单改变了商店状态");
+  fail(report.shop_menu?.catalog_visible === true && report.shop_menu?.catalog_is_visual_top_layer === true && report.shop_menu?.catalog_z > report.shop_menu?.menu_z && report.shop_menu?.catalog_z > report.shop_menu?.shop_z, "Card catalog is not the topmost overlay when opened from the shop");
+  fail(report.shop_menu?.shop_open_behind_catalog === true && report.shop_menu?.catalog_card_count > 0 && report.shop_menu?.menu_restored_after_catalog === true, "Shop-to-catalog navigation did not preserve its underlying UI state");
   const rarityBorderPalette = { "rarity-common": "rgb(139, 144, 152)", "rarity-uncommon": "rgb(77, 158, 255)", "rarity-rare": "rgb(242, 193, 78)", "rarity-legendary": "rgb(224, 82, 82)" };
   for (const [rarity, color] of Object.entries(report.rarity_borders ?? {})) {
     if (rarityBorderPalette[rarity]) fail(color === rarityBorderPalette[rarity], `${rarity} 商店边框颜色不正确`);
